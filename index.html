@@ -1,0 +1,528 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f5f0e6">
+  <meta name="description" content="日日新，一款简单、安静的专注时钟。自定义时长，立即开始，或预约一次专注，并查看你的专注热力图与统计。">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="日日新">
+  <title>日日新 · 专注时钟</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">跳到主要内容</a>
+
+  <svg class="svg-sprite" aria-hidden="true">
+    <defs>
+      <symbol id="i-play" viewBox="0 0 24 24">
+        <path d="M8.5 5.8v12.4a.8.8 0 0 0 1.22.68l9.9-6.2a.8.8 0 0 0 0-1.36l-9.9-6.2a.8.8 0 0 0-1.22.68Z"/>
+      </symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>
+      </symbol>
+      <symbol id="i-pause" viewBox="0 0 24 24">
+        <path d="M9 5.5v13M15 5.5v13"/>
+      </symbol>
+      <symbol id="i-stop" viewBox="0 0 24 24">
+        <rect x="6" y="6" width="12" height="12" rx="2"/>
+      </symbol>
+      <symbol id="i-settings" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19 13.2a7.5 7.5 0 0 0 0-2.4l1.8-1.4-1.8-3.1-2.15.86a7.4 7.4 0 0 0-2.08-1.2L14.5 3h-5l-.27 2.96a7.4 7.4 0 0 0-2.08 1.2L5 6.3 3.2 9.4 5 10.8a7.5 7.5 0 0 0 0 2.4l-1.8 1.4 1.8 3.1 2.15-.86a7.4 7.4 0 0 0 2.08 1.2L9.5 21h5l.27-2.96a7.4 7.4 0 0 0 2.08-1.2l2.15.86 1.8-3.1Z"/>
+      </symbol>
+      <symbol id="i-chart" viewBox="0 0 24 24">
+        <path d="M4.5 19.5h15M7 16V10M12 16V5.5M17 16v-4"/>
+      </symbol>
+      <symbol id="i-flame" viewBox="0 0 24 24">
+        <path d="M12 21c3.9 0 6.5-2.65 6.5-6.2 0-2.55-1.4-4.9-3.55-6.75C13.5 6.78 12 5.08 11.9 3c-1.8 2.25-2.1 4.2-1.3 6.32C9.35 8.96 8.45 8.5 8.1 7.5 6.7 9.13 6 10.9 6 12.8 6 17.3 8.15 21 12 21Z"/>
+        <path d="M12 18c1.5 0 2.5-1.03 2.5-2.4 0-1.05-.66-2.03-1.5-2.82-.45-.43-.83-.9-1.02-1.48-.72.9-1.98 2.72-1.98 4.3C10 16.97 11 18 12 18Z"/>
+      </symbol>
+      <symbol id="i-check" viewBox="0 0 24 24">
+        <path d="m5 12.5 4.4 4.4L19 7.5"/>
+      </symbol>
+      <symbol id="i-calendar" viewBox="0 0 24 24">
+        <rect x="4" y="5.5" width="16" height="15" rx="3"/><path d="M8 3.5v4M16 3.5v4M4 10h16"/>
+      </symbol>
+      <symbol id="i-arrow-left" viewBox="0 0 24 24">
+        <path d="M14.5 5.5 8 12l6.5 6.5"/>
+      </symbol>
+      <symbol id="i-arrow-right" viewBox="0 0 24 24">
+        <path d="M9.5 5.5 16 12l-6.5 6.5"/>
+      </symbol>
+      <symbol id="i-x" viewBox="0 0 24 24">
+        <path d="M6 6l12 12M18 6 6 18"/>
+      </symbol>
+      <symbol id="i-leaf" viewBox="0 0 24 24">
+        <path d="M5 19c6.5.5 13-3.5 14-14-8.5-1-14 3.5-14 9 0 1.8.6 3.4 1.6 4.6"/>
+        <path d="M5.5 18.5 14 10"/>
+      </symbol>
+      <symbol id="i-download" viewBox="0 0 24 24">
+        <path d="M12 4v10.5M8 11l4 4 4-4M5 19.5h14"/>
+      </symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24">
+        <path d="M5 7h14M9 7V4.5h6V7M7 7l.8 13h8.4L17 7M10 11v5.5M14 11v5.5"/>
+      </symbol>
+      <symbol id="i-bell" viewBox="0 0 24 24">
+        <path d="M18 9.5a6 6 0 0 0-12 0c0 6-2.5 7-2.5 7h17S18 15.5 18 9.5ZM10 20h4"/>
+      </symbol>
+      <symbol id="i-target" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1" class="fill"/>
+      </symbol>
+      <symbol id="i-hourglass" viewBox="0 0 24 24">
+        <path d="M7 3.5h10M7 20.5h10M8 3.5v3.6c0 2 4 3.5 4 4.9s-4 2.9-4 4.9v3.6M16 3.5v3.6c0 2-4 3.5-4 4.9s4 2.9 4 4.9v3.6"/>
+      </symbol>
+      <symbol id="i-chevron-down" viewBox="0 0 24 24">
+        <path d="m6.5 9.5 5.5 5.5 5.5-5.5"/>
+      </symbol>
+    </defs>
+  </svg>
+
+  <header class="site-header">
+    <button class="brand" type="button" data-view="focus" aria-label="日日新，回到专注">
+      <span class="brand-mark" aria-hidden="true">日</span>
+      <span class="brand-text">日日新<small>KEEP FOCUS</small></span>
+    </button>
+
+    <nav class="view-nav" aria-label="主导航">
+      <button class="nav-item is-active" type="button" data-view="focus" aria-current="page">专注</button>
+      <button class="nav-item" type="button" data-view="stats">统计</button>
+    </nav>
+
+    <div class="header-actions">
+      <button class="icon-btn" id="settingsBtn" type="button" aria-label="打开设置" title="设置">
+        <svg class="icon" aria-hidden="true"><use href="#i-settings"></use></svg>
+      </button>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="view is-active" id="focusView" aria-labelledby="focusHeadline">
+      <div class="focus-shell">
+        <div class="focus-intro">
+          <p class="eyebrow" id="greeting">晚上好，今天也慢慢来</p>
+          <h1 id="focusHeadline">把注意力，放在一件事上。</h1>
+        </div>
+
+        <article class="timer-card" id="timerCard" aria-label="专注计时器">
+          <div class="timer-top">
+            <div class="timer-mode" id="timerMode">
+              <span class="status-dot" aria-hidden="true"></span>
+              <span id="timerModeLabel">准备专注</span>
+            </div>
+            <button class="duration-control" id="durationControl" type="button" aria-haspopup="dialog" aria-controls="durationDialog" aria-label="选择专注时长，当前 25 分钟">
+              <span class="duration-control-value" id="durationControlValue">25</span>
+              <span class="duration-control-unit">分钟</span>
+              <svg class="icon" aria-hidden="true"><use href="#i-chevron-down"></use></svg>
+            </button>
+          </div>
+
+          <div class="timer-stage">
+            <svg class="timer-ring" viewBox="0 0 360 360" aria-hidden="true">
+              <defs>
+                <linearGradient id="ringGradient" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0" stop-color="#6f9b7f"/>
+                  <stop offset="1" stop-color="#2e5d48"/>
+                </linearGradient>
+                <linearGradient id="breakGradient" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0" stop-color="#e4bb72"/>
+                  <stop offset="1" stop-color="#c3893b"/>
+                </linearGradient>
+              </defs>
+              <circle class="ring-track" cx="180" cy="180" r="158"></circle>
+              <circle class="ring-progress" id="progressRing" cx="180" cy="180" r="158"></circle>
+            </svg>
+            <div class="timer-center">
+              <div class="clock" id="clockDisplay" role="timer" aria-live="off">25:00</div>
+              <div class="clock-caption" id="clockCaption">准备好，就从现在开始</div>
+            </div>
+          </div>
+
+          <div class="timer-actions" id="idleActions">
+            <button class="btn btn-primary btn-large" id="startNowBtn" type="button">
+              <svg class="icon" aria-hidden="true"><use href="#i-play"></use></svg>
+              立即开始
+            </button>
+            <button class="btn btn-secondary btn-large" id="scheduleBtn" type="button">
+              <svg class="icon" aria-hidden="true"><use href="#i-calendar"></use></svg>
+              预约开始
+            </button>
+          </div>
+
+          <div class="timer-actions" id="runningActions" hidden>
+            <button class="btn btn-primary btn-large" id="pauseBtn" type="button">
+              <svg class="icon" aria-hidden="true"><use href="#i-pause"></use></svg>
+              <span id="pauseBtnLabel">暂停</span>
+            </button>
+            <button class="btn btn-ghost btn-large" id="endBtn" type="button">
+              <svg class="icon" aria-hidden="true"><use href="#i-stop"></use></svg>
+              结束
+            </button>
+          </div>
+
+          <p class="idle-note" id="idleNote">意志力在线，就从现在开始；现在不想学，也可以交给预约。</p>
+
+          <div class="schedule-strip" id="scheduleStrip" hidden>
+            <span class="schedule-icon" aria-hidden="true">
+              <svg class="icon"><use href="#i-clock"></use></svg>
+            </span>
+            <div class="schedule-copy">
+              <strong id="scheduleTitle">已预约</strong>
+              <span id="scheduleMeta"></span>
+            </div>
+            <button class="text-btn is-accent" id="scheduleStartBtn" type="button" hidden>开始</button>
+            <button class="icon-btn icon-btn-sm" id="cancelScheduleBtn" type="button" aria-label="取消预约" title="取消预约">
+              <svg class="icon" aria-hidden="true"><use href="#i-x"></use></svg>
+            </button>
+          </div>
+        </article>
+
+        <div class="today-strip" aria-label="今日专注概览">
+          <div class="today-stat">
+            <strong id="todayMinutes">0</strong>
+            <span>今日分钟</span>
+          </div>
+          <span class="today-sep" aria-hidden="true"></span>
+          <div class="today-stat">
+            <strong id="todayStarts">0</strong>
+            <span>启动次数</span>
+          </div>
+          <span class="today-sep" aria-hidden="true"></span>
+          <div class="today-stat">
+            <strong id="todayCompleted">0</strong>
+            <span>完成番茄</span>
+          </div>
+          <button class="mini-link" type="button" data-view="stats">
+            查看统计
+            <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="statsView" aria-labelledby="statsHeadline" hidden>
+      <div class="stats-shell">
+        <div class="stats-heading">
+          <div>
+            <p class="eyebrow">你的专注轨迹</p>
+            <h1 id="statsHeadline">每一分钟，都算数。</h1>
+          </div>
+          <button class="btn btn-secondary btn-export" id="exportBtn" type="button">
+            <svg class="icon" aria-hidden="true"><use href="#i-download"></use></svg>
+            导出数据
+          </button>
+        </div>
+
+        <div class="metric-grid">
+          <article class="metric-card">
+            <div class="metric-icon metric-icon-green">
+              <svg class="icon" aria-hidden="true"><use href="#i-clock"></use></svg>
+            </div>
+            <p class="metric-label">总专注时长</p>
+            <p class="metric-value"><strong id="metricTotal">0</strong><span id="metricTotalUnit">分钟</span></p>
+            <p class="metric-hint" id="metricTotalHint">从第一个番茄开始累计</p>
+          </article>
+          <article class="metric-card">
+            <div class="metric-icon metric-icon-gold">
+              <svg class="icon" aria-hidden="true"><use href="#i-play"></use></svg>
+            </div>
+            <p class="metric-label">启动次数</p>
+            <p class="metric-value"><strong id="metricStarts">0</strong><span>次</span></p>
+            <p class="metric-hint">每一次开始都值得记下</p>
+          </article>
+          <article class="metric-card">
+            <div class="metric-icon metric-icon-tomato">
+              <svg class="icon" aria-hidden="true"><use href="#i-target"></use></svg>
+            </div>
+            <p class="metric-label">完成番茄</p>
+            <p class="metric-value"><strong id="metricCompleted">0</strong><span>个</span></p>
+            <p class="metric-hint" id="metricCompletionHint">完成率 0%</p>
+          </article>
+          <article class="metric-card">
+            <div class="metric-icon metric-icon-leaf">
+              <svg class="icon" aria-hidden="true"><use href="#i-flame"></use></svg>
+            </div>
+            <p class="metric-label">连续专注</p>
+            <p class="metric-value"><strong id="metricStreak">0</strong><span>天</span></p>
+            <p class="metric-hint" id="metricStreakHint">今天也来点亮一格</p>
+          </article>
+        </div>
+
+        <section class="panel heatmap-panel" aria-labelledby="heatmapTitle">
+          <div class="panel-head">
+            <div>
+              <h2 id="heatmapTitle">专注热力图</h2>
+              <p id="heatmapSubtitle">过去一年，颜色越深，投入越多。</p>
+            </div>
+            <div class="heatmap-legend" aria-hidden="true">
+              <span>少</span>
+              <i class="level-0"></i><i class="level-1"></i><i class="level-2"></i><i class="level-3"></i><i class="level-4"></i>
+              <span>多</span>
+            </div>
+          </div>
+          <div class="heatmap-scroll">
+            <div class="heatmap" id="heatmap"></div>
+          </div>
+          <p class="heatmap-foot" id="heatmapFoot"></p>
+        </section>
+
+        <div class="stats-grid">
+          <section class="panel pie-panel" aria-labelledby="pieTitle">
+            <div class="panel-head">
+              <div>
+                <h2 id="pieTitle">每日专注分布</h2>
+                <p>看看一天的时间，落在了哪里。</p>
+              </div>
+              <div class="date-switcher">
+                <button class="icon-btn icon-btn-sm" id="piePrevBtn" type="button" aria-label="前一天">
+                  <svg class="icon" aria-hidden="true"><use href="#i-arrow-left"></use></svg>
+                </button>
+                <button class="date-label" id="pieDateLabel" type="button" title="回到今天">今天</button>
+                <button class="icon-btn icon-btn-sm" id="pieNextBtn" type="button" aria-label="后一天">
+                  <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg>
+                </button>
+              </div>
+            </div>
+            <div class="pie-content">
+              <div class="donut" id="pieChart"></div>
+              <div class="pie-legend" id="pieLegend"></div>
+            </div>
+            <p class="pie-empty" id="pieEmpty" hidden>这一天还没有专注记录。</p>
+            <p class="pie-insight" id="pieInsight"></p>
+          </section>
+
+          <section class="panel week-panel" aria-labelledby="weekTitle">
+            <div class="panel-head">
+              <div>
+                <h2 id="weekTitle">最近 7 天</h2>
+                <p id="weekSubtitle">每天前进一点点。</p>
+              </div>
+            </div>
+            <div class="week-chart" id="weekChart"></div>
+          </section>
+        </div>
+
+        <section class="panel records-panel" aria-labelledby="recordsTitle">
+          <div class="panel-head">
+            <div>
+              <h2 id="recordsTitle">专注记录</h2>
+              <p id="recordsSubtitle">每一次坐下，都有迹可循。</p>
+            </div>
+            <span class="records-count" id="recordsCount">0 条</span>
+          </div>
+          <div class="records-list" id="recordsList"></div>
+          <button class="btn btn-ghost btn-more" id="recordsMoreBtn" type="button" hidden>显示更多</button>
+        </section>
+
+        <p class="stats-footnote">
+          <svg class="icon" aria-hidden="true"><use href="#i-leaf"></use></svg>
+          数据只保存在本机浏览器中，无需登录，也不会上传。
+        </p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <span>日日新 · 专注时钟</span>
+    <span class="footer-quote">苟日新，日日新，又日新。</span>
+  </footer>
+
+  <dialog class="dialog dialog-duration" id="durationDialog" aria-labelledby="durationDialogTitle">
+    <form id="durationForm" novalidate>
+      <div class="dialog-head">
+        <div>
+          <p class="eyebrow">专注时长</p>
+          <h2 id="durationDialogTitle">这一轮，专注多久？</h2>
+        </div>
+        <button class="icon-btn dialog-close" type="button" data-close="durationDialog" aria-label="关闭">
+          <svg class="icon" aria-hidden="true"><use href="#i-x"></use></svg>
+        </button>
+      </div>
+      <div class="dialog-body">
+        <div class="preset-grid" id="durationPresetGrid" role="group" aria-label="常用专注时长">
+          <button type="button" data-minutes="15"><strong>15</strong><span>分钟</span></button>
+          <button type="button" data-minutes="25" class="is-selected"><strong>25</strong><span>分钟</span></button>
+          <button type="button" data-minutes="45"><strong>45</strong><span>分钟</span></button>
+          <button type="button" data-minutes="60"><strong>60</strong><span>分钟</span></button>
+        </div>
+        <div class="custom-duration">
+          <div class="custom-duration-head">
+            <label for="customMinutes">自定义</label>
+            <span>1–180 分钟</span>
+          </div>
+          <div class="stepper">
+            <button class="stepper-btn" id="customMinus" type="button" aria-label="减少五分钟">−</button>
+            <input id="customMinutes" type="number" min="1" max="180" step="1" inputmode="numeric" value="25" aria-label="自定义专注分钟数">
+            <span class="stepper-suffix">分钟</span>
+            <button class="stepper-btn" id="customPlus" type="button" aria-label="增加五分钟">+</button>
+          </div>
+        </div>
+        <p class="form-error" id="durationError" role="alert" hidden></p>
+      </div>
+      <div class="dialog-foot">
+        <button class="btn btn-ghost" type="button" data-close="durationDialog">取消</button>
+        <button class="btn btn-primary" type="submit">用这个时长</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="dialog" id="scheduleDialog" aria-labelledby="scheduleDialogTitle">
+    <form id="scheduleForm" novalidate>
+      <div class="dialog-head">
+        <div>
+          <p class="eyebrow">给未来的自己</p>
+          <h2 id="scheduleDialogTitle">预约一次专注</h2>
+        </div>
+        <button class="icon-btn dialog-close" type="button" data-close="scheduleDialog" aria-label="关闭">
+          <svg class="icon" aria-hidden="true"><use href="#i-x"></use></svg>
+        </button>
+      </div>
+      <div class="dialog-body">
+        <div class="form-block">
+          <span class="field-label">什么时候开始</span>
+          <div class="date-row">
+            <div class="segmented segmented-sm" id="scheduleDayPicker">
+              <button type="button" data-day="today" class="is-selected">今天</button>
+              <button type="button" data-day="tomorrow">明天</button>
+            </div>
+            <input id="scheduleTime" type="time" required aria-label="预约开始时间">
+          </div>
+        </div>
+        <div class="form-block">
+          <span class="field-label">专注多久</span>
+          <div class="segmented segmented-wide" id="scheduleDurationPicker">
+            <button type="button" data-minutes="15">15 分钟</button>
+            <button type="button" data-minutes="25" class="is-selected">25 分钟</button>
+            <button type="button" data-minutes="45">45 分钟</button>
+            <button type="button" data-minutes="60">60 分钟</button>
+          </div>
+          <label class="inline-custom-duration" for="scheduleCustomMinutes">
+            <span>自定义</span>
+            <input id="scheduleCustomMinutes" type="number" min="1" max="180" step="1" inputmode="numeric" value="25" aria-label="自定义预约专注分钟数">
+            <span>分钟</span>
+          </label>
+        </div>
+        <div class="schedule-note">
+          <svg class="icon" aria-hidden="true"><use href="#i-bell"></use></svg>
+          <p>页面开着时，到点会自动开始。若是关着页面，下次打开会提醒你。</p>
+        </div>
+        <p class="form-error" id="scheduleError" role="alert" hidden></p>
+      </div>
+      <div class="dialog-foot">
+        <button class="btn btn-ghost" type="button" data-close="scheduleDialog">取消</button>
+        <button class="btn btn-primary" type="submit">预约开始</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="dialog" id="settingsDialog" aria-labelledby="settingsDialogTitle">
+    <div class="dialog-head">
+      <div>
+        <p class="eyebrow">偏好</p>
+        <h2 id="settingsDialogTitle">设置</h2>
+      </div>
+      <button class="icon-btn dialog-close" type="button" data-close="settingsDialog" aria-label="关闭">
+        <svg class="icon" aria-hidden="true"><use href="#i-x"></use></svg>
+      </button>
+    </div>
+    <div class="dialog-body">
+      <div class="setting-row setting-row-col">
+        <div>
+          <strong>休息时长</strong>
+          <p>完成一个番茄后，给自己几分钟。</p>
+        </div>
+        <div class="segmented segmented-sm" id="breakDurationPicker">
+          <button type="button" data-minutes="5" class="is-selected">5 分</button>
+          <button type="button" data-minutes="10">10 分</button>
+          <button type="button" data-minutes="15">15 分</button>
+        </div>
+      </div>
+      <div class="setting-row">
+        <div>
+          <strong>完成提示音</strong>
+          <p>一轮结束时，轻轻响一声。</p>
+        </div>
+        <label class="switch">
+          <input id="soundToggle" type="checkbox" checked>
+          <span aria-hidden="true"></span>
+          <span class="sr-only">完成提示音</span>
+        </label>
+      </div>
+      <div class="setting-row">
+        <div>
+          <strong>桌面通知</strong>
+          <p id="notificationHint">允许后，预约到点或是完成时通知你。</p>
+        </div>
+        <label class="switch">
+          <input id="notifyToggle" type="checkbox">
+          <span aria-hidden="true"></span>
+          <span class="sr-only">桌面通知</span>
+        </label>
+      </div>
+      <div class="setting-row">
+        <div>
+          <strong>安装到手机</strong>
+          <p id="installHint">像 App 一样从主屏幕打开，离线也能计时。</p>
+        </div>
+        <button class="btn-text" id="installAppBtn" type="button" hidden>安装</button>
+      </div>
+      <div class="setting-divider"></div>
+      <div class="data-actions">
+        <button class="btn-text" id="exportBtnSettings" type="button">
+          <svg class="icon" aria-hidden="true"><use href="#i-download"></use></svg>
+          导出全部数据
+        </button>
+        <button class="btn-text is-danger" id="clearDataBtn" type="button">
+          <svg class="icon" aria-hidden="true"><use href="#i-trash"></use></svg>
+          清空专注记录
+        </button>
+      </div>
+      <p class="privacy-note">数据只保存在这台设备的浏览器里。清理浏览器数据前，记得先导出。</p>
+    </div>
+  </dialog>
+
+  <dialog class="dialog dialog-complete" id="completeDialog" aria-labelledby="completeTitle">
+    <div class="completion-mark" aria-hidden="true">
+      <svg class="icon"><use href="#i-check"></use></svg>
+    </div>
+    <p class="eyebrow">专注完成</p>
+    <h2 id="completeTitle">这一轮，完成了。</h2>
+    <p class="completion-copy" id="completeSummary">专注了 25 分钟。起身走走，喝口水。</p>
+    <div class="complete-actions">
+      <button class="btn btn-primary" id="breakBtn" type="button">休息 5 分钟</button>
+      <button class="btn btn-secondary" id="againBtn" type="button">再来一轮</button>
+    </div>
+    <button class="dialog-dismiss" id="completeClose" type="button">稍后再说</button>
+  </dialog>
+
+  <dialog class="dialog" id="confirmDialog" aria-labelledby="confirmTitle">
+    <div class="dialog-head">
+      <h2 id="confirmTitle">确认</h2>
+      <button class="icon-btn dialog-close" type="button" data-close="confirmDialog" aria-label="关闭">
+        <svg class="icon" aria-hidden="true"><use href="#i-x"></use></svg>
+      </button>
+    </div>
+    <div class="dialog-body">
+      <p class="confirm-copy" id="confirmMessage"></p>
+    </div>
+    <div class="dialog-foot">
+      <button class="btn btn-ghost" id="confirmCancel" type="button">取消</button>
+      <button class="btn btn-danger" id="confirmOk" type="button">确认</button>
+    </div>
+  </dialog>
+
+  <div class="toast-host" id="toastHost" aria-live="polite" aria-atomic="false"></div>
+  <div class="chart-tooltip" id="chartTooltip" role="status" hidden></div>
+
+  <noscript>
+    <div class="noscript">专注时钟需要启用 JavaScript 才能运行。</div>
+  </noscript>
+
+  <script src="app.js"></script>
+</body>
+</html>
