@@ -2137,7 +2137,7 @@ main {
   padding-top: 30px;
 }
 
-.dialog-complete.is-editing #completeClose {
+.dialog-complete #completeClose.btn-primary {
   display: inline-flex;
   align-items: center;
   justify-content: center;

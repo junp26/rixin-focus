@@ -993,11 +993,12 @@
     sessionDialogMode = edit ? 'edit' : 'complete';
     const overtimeSeconds = Math.max(0, session.focusedSeconds - session.plannedSeconds);
     const overtimeCopy = overtimeSeconds >= 30 ? `（含加时 ${formatDurationCN(overtimeSeconds)}）` : '';
+    const partial = !edit && !session.completed;
 
     els.completeDialog.classList.toggle('is-editing', edit);
     els.completionMark.style.display = edit ? 'none' : '';
-    els.sessionCompleteActions.hidden = edit;
-    els.completeClose.className = edit ? 'btn btn-primary' : 'dialog-dismiss';
+    els.sessionCompleteActions.hidden = edit || partial;
+    els.completeClose.className = edit || partial ? 'btn btn-primary' : 'dialog-dismiss';
     els.completeClose.textContent = '保存并关闭';
 
     if (edit) {
