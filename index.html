@@ -133,6 +133,10 @@
                   <stop offset="0" stop-color="#e4bb72"/>
                   <stop offset="1" stop-color="#c3893b"/>
                 </linearGradient>
+                <linearGradient id="overtimeGradient" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0" stop-color="#83a276"/>
+                  <stop offset="1" stop-color="#b8863b"/>
+                </linearGradient>
               </defs>
               <circle class="ring-track" cx="180" cy="180" r="158"></circle>
               <circle class="ring-progress" id="progressRing" cx="180" cy="180" r="158"></circle>
@@ -253,47 +257,86 @@
           </article>
         </div>
 
-        <section class="panel heatmap-panel" aria-labelledby="heatmapTitle">
-          <div class="panel-head">
+        <section class="panel distribution-panel" id="distributionPanel" aria-labelledby="distributionTitle">
+          <div class="panel-head distribution-head">
             <div>
-              <h2 id="heatmapTitle">专注热力图</h2>
-              <p id="heatmapSubtitle">过去一年，颜色越深，投入越多。</p>
+              <h2 id="distributionTitle">专注分布</h2>
+              <p>给每次专注归个类，看看时间去了哪里。</p>
             </div>
-            <div class="heatmap-legend" aria-hidden="true">
-              <span>少</span>
-              <i class="level-0"></i><i class="level-1"></i><i class="level-2"></i><i class="level-3"></i><i class="level-4"></i>
-              <span>多</span>
+            <div class="segmented segmented-sm period-mode" id="periodModeSwitch" role="group" aria-label="选择统计周期">
+              <button type="button" data-mode="day" class="is-selected">日</button>
+              <button type="button" data-mode="week">周</button>
+              <button type="button" data-mode="month">月</button>
             </div>
           </div>
-          <div class="heatmap-scroll">
-            <div class="heatmap" id="heatmap"></div>
+          <div class="period-toolbar">
+            <div class="period-copy">
+              <strong id="periodTitle">今天</strong>
+              <span id="periodRange">10月18日</span>
+            </div>
+            <div class="period-nav">
+              <button class="icon-btn icon-btn-sm" id="periodPrevBtn" type="button" aria-label="上一个周期">
+                <svg class="icon" aria-hidden="true"><use href="#i-arrow-left"></use></svg>
+              </button>
+              <input class="period-date-input" id="periodDateInput" type="date" aria-label="选择要查看的日期">
+              <button class="icon-btn icon-btn-sm" id="periodNextBtn" type="button" aria-label="下一个周期">
+                <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg>
+              </button>
+              <button class="text-btn" id="periodTodayBtn" type="button" hidden>回到今天</button>
+            </div>
           </div>
-          <p class="heatmap-foot" id="heatmapFoot"></p>
+          <div class="distribution-content">
+            <div class="distribution-chart-wrap">
+              <div class="donut distribution-donut" id="distributionChart"></div>
+              <p class="distribution-summary" id="distributionSummary">共 0 次专注</p>
+            </div>
+            <div class="distribution-list-wrap">
+              <div class="distribution-list-head">
+                <button class="icon-btn icon-btn-sm" id="distributionBackBtn" type="button" aria-label="返回全部分类" hidden>
+                  <svg class="icon" aria-hidden="true"><use href="#i-arrow-left"></use></svg>
+                </button>
+                <div class="distribution-list-title">
+                  <strong id="distributionListTitle">全部分类</strong>
+                  <span id="distributionRange">今天</span>
+                </div>
+                <span class="distribution-total" id="distributionTotal">0 分钟</span>
+              </div>
+              <div class="category-list" id="categoryList"></div>
+            </div>
+          </div>
+          <p class="distribution-empty" id="distributionEmpty" hidden>这个区间还没有专注记录。</p>
+          <p class="pie-insight" id="distributionInsight"></p>
         </section>
 
         <div class="stats-grid">
-          <section class="panel pie-panel" aria-labelledby="pieTitle">
+          <section class="panel heatmap-panel" aria-labelledby="heatmapTitle">
             <div class="panel-head">
               <div>
-                <h2 id="pieTitle">每日专注分布</h2>
-                <p>看看一天的时间，落在了哪里。</p>
+                <h2 id="heatmapTitle">专注热力图</h2>
+                <p id="heatmapSubtitle">一个月一张日历，颜色越深，投入越多。</p>
               </div>
-              <div class="date-switcher">
-                <button class="icon-btn icon-btn-sm" id="piePrevBtn" type="button" aria-label="前一天">
-                  <svg class="icon" aria-hidden="true"><use href="#i-arrow-left"></use></svg>
-                </button>
-                <button class="date-label" id="pieDateLabel" type="button" title="回到今天">今天</button>
-                <button class="icon-btn icon-btn-sm" id="pieNextBtn" type="button" aria-label="后一天">
-                  <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg>
-                </button>
+              <div class="heatmap-legend" aria-hidden="true">
+                <span>少</span>
+                <i class="level-0"></i><i class="level-1"></i><i class="level-2"></i><i class="level-3"></i><i class="level-4"></i>
+                <span>多</span>
               </div>
             </div>
-            <div class="pie-content">
-              <div class="donut" id="pieChart"></div>
-              <div class="pie-legend" id="pieLegend"></div>
+            <div class="month-toolbar">
+              <button class="icon-btn icon-btn-sm" id="heatmapPrevBtn" type="button" aria-label="上个月">
+                <svg class="icon" aria-hidden="true"><use href="#i-arrow-left"></use></svg>
+              </button>
+              <button class="month-title" id="heatmapMonthLabel" type="button" title="回到本月">2026年10月</button>
+              <button class="icon-btn icon-btn-sm" id="heatmapNextBtn" type="button" aria-label="下个月">
+                <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg>
+              </button>
             </div>
-            <p class="pie-empty" id="pieEmpty" hidden>这一天还没有专注记录。</p>
-            <p class="pie-insight" id="pieInsight"></p>
+            <div class="month-calendar">
+              <div class="month-weekdays" aria-hidden="true">
+                <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
+              </div>
+              <div class="month-grid" id="monthGrid"></div>
+            </div>
+            <p class="heatmap-foot" id="heatmapFoot"></p>
           </section>
 
           <section class="panel week-panel" aria-labelledby="weekTitle">
@@ -304,6 +347,7 @@
               </div>
             </div>
             <div class="week-chart" id="weekChart"></div>
+            <p class="week-hint">点一根柱子，查看那天的分类分布。</p>
           </section>
         </div>
 
@@ -311,7 +355,7 @@
           <div class="panel-head">
             <div>
               <h2 id="recordsTitle">专注记录</h2>
-              <p id="recordsSubtitle">每一次坐下，都有迹可循。</p>
+              <p id="recordsSubtitle">点开一条记录，可以补充分类和具体做了什么。</p>
             </div>
             <span class="records-count" id="recordsCount">0 条</span>
           </div>
@@ -444,6 +488,24 @@
       </div>
       <div class="setting-row">
         <div>
+          <strong>倒计时后继续正计时</strong>
+          <p>到点不打断，自动转成正计时，直到你手动结束。</p>
+        </div>
+        <label class="switch">
+          <input id="overtimeToggle" type="checkbox">
+          <span aria-hidden="true"></span>
+          <span class="sr-only">倒计时结束后继续正计时</span>
+        </label>
+      </div>
+      <div class="setting-row">
+        <div>
+          <strong>专注分类</strong>
+          <p id="categorySummary">学习、工作、运动、阅读</p>
+        </div>
+        <button class="btn-text" id="manageCategoriesBtn" type="button">管理</button>
+      </div>
+      <div class="setting-row">
+        <div>
           <strong>完成提示音</strong>
           <p>一轮结束时，轻轻响一声。</p>
         </div>
@@ -486,18 +548,64 @@
     </div>
   </dialog>
 
+  <dialog class="dialog category-dialog" id="categoryDialog" aria-labelledby="categoryDialogTitle">
+    <div class="dialog-head">
+      <div>
+        <p class="eyebrow">统计口径</p>
+        <h2 id="categoryDialogTitle">专注分类</h2>
+      </div>
+      <button class="icon-btn dialog-close" type="button" data-close="categoryDialog" aria-label="关闭">
+        <svg class="icon" aria-hidden="true"><use href="#i-x"></use></svg>
+      </button>
+    </div>
+    <div class="dialog-body">
+      <p class="dialog-note">每次专注结束后可以选一个大类，再写下具体做了什么。分类和具体内容会一起进入统计。</p>
+      <div class="category-manage-list" id="categoryManageList"></div>
+      <form class="category-form" id="categoryForm" novalidate>
+        <span class="field-label" id="categoryFormLabel">添加分类</span>
+        <div class="category-form-row">
+          <input id="categoryNameInput" type="text" maxlength="12" autocomplete="off" placeholder="例如：学习、运动">
+          <button class="btn btn-primary" id="categorySubmitBtn" type="submit">添加</button>
+        </div>
+        <div class="color-swatches" id="categoryColorSwatches" role="group" aria-label="选择分类颜色"></div>
+        <button class="btn-text" id="categoryCancelEdit" type="button" hidden>取消修改</button>
+        <p class="form-error" id="categoryError" role="alert" hidden></p>
+      </form>
+      <p class="category-note">没有分类的旧记录会显示为「未分类」。</p>
+    </div>
+    <div class="dialog-foot">
+      <button class="btn btn-primary" type="button" data-close="categoryDialog">完成</button>
+    </div>
+  </dialog>
+
   <dialog class="dialog dialog-complete" id="completeDialog" aria-labelledby="completeTitle">
-    <div class="completion-mark" aria-hidden="true">
+    <button class="icon-btn dialog-close session-dialog-close" type="button" data-close="completeDialog" aria-label="关闭">
+      <svg class="icon" aria-hidden="true"><use href="#i-x"></use></svg>
+    </button>
+    <div class="completion-mark" id="completionMark" aria-hidden="true">
       <svg class="icon"><use href="#i-check"></use></svg>
     </div>
-    <p class="eyebrow">专注完成</p>
+    <p class="eyebrow" id="completeEyebrow">专注完成</p>
     <h2 id="completeTitle">这一轮，完成了。</h2>
-    <p class="completion-copy" id="completeSummary">专注了 25 分钟。起身走走，喝口水。</p>
-    <div class="complete-actions">
+    <p class="completion-copy" id="completeSummary">专注了 25 分钟。给它归个类吧。</p>
+
+    <div class="session-classification">
+      <div class="session-section-head">
+        <span class="field-label">这次主要做了什么？</span>
+        <button class="text-btn" id="sessionManageCategoriesBtn" type="button">管理分类</button>
+      </div>
+      <div class="category-chips" id="sessionCategoryChips"></div>
+      <label class="session-detail" for="sessionDetailInput">
+        <span>具体做了什么？</span>
+        <input id="sessionDetailInput" type="text" maxlength="80" autocomplete="off" placeholder="例如：英语听力 / 跑步 3 公里">
+      </label>
+    </div>
+
+    <div class="complete-actions" id="sessionCompleteActions">
       <button class="btn btn-primary" id="breakBtn" type="button">休息 5 分钟</button>
       <button class="btn btn-secondary" id="againBtn" type="button">再来一轮</button>
     </div>
-    <button class="dialog-dismiss" id="completeClose" type="button">稍后再说</button>
+    <button class="dialog-dismiss" id="completeClose" type="button">保存并关闭</button>
   </dialog>
 
   <dialog class="dialog" id="confirmDialog" aria-labelledby="confirmTitle">

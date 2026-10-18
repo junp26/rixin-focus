@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE_NAME = 'rrx-focus-shell-v3';
+const CACHE_NAME = 'rrx-focus-shell-v4';
 const APP_SHELL = [
   './',
   './index.html',

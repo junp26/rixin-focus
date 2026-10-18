@@ -6,7 +6,6 @@
   const STORAGE_KEY = 'rrx-focus-v1';
   const BREAK_PRESETS = [5, 10, 15];
   const PAGE_SIZE = 30;
-  const HEAT_WEEKS = 53;
   const RING_RADIUS = 158;
   const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 
@@ -15,18 +14,29 @@
     breakMinutes: 5,
     sound: true,
     notify: false,
+    overtimeEnabled: false,
   };
 
   const IDLE_HEADLINE = '把注意力，放在一件事上。';
   const WEEKDAYS_SHORT = ['日', '一', '二', '三', '四', '五', '六'];
-  const WEEKDAY_LABELS = ['一', '', '三', '', '五', '', '日'];
 
-  const PIE_PERIODS = [
-    { key: 'morning', label: '早晨', range: '05:00–09:00', color: '#d2a04a', ranges: [[300, 540]] },
-    { key: 'forenoon', label: '上午', range: '09:00–12:00', color: '#3d7057', ranges: [[540, 720]] },
-    { key: 'afternoon', label: '下午', range: '12:00–18:00', color: '#8bb39a', ranges: [[720, 1080]] },
-    { key: 'evening', label: '晚上', range: '18:00–05:00', color: '#c76c53', ranges: [[1080, 1440], [0, 300]] },
+  const CATEGORY_COLORS = [
+    '#3e7057', '#c7674f', '#d2a04a', '#547c8c',
+    '#7c6b95', '#8a6e4b', '#4f7a70', '#b06a7d',
   ];
+
+  const DEFAULT_CATEGORIES = [
+    { id: 'cat-study', name: '学习', color: '#3e7057' },
+    { id: 'cat-work', name: '工作', color: '#547c8c' },
+    { id: 'cat-exercise', name: '运动', color: '#c7674f' },
+    { id: 'cat-reading', name: '阅读', color: '#d2a04a' },
+  ];
+
+  const UNCATEGORIZED_KEY = '__uncategorized__';
+  const UNCATEGORIZED_COLOR = '#b7afa2';
+  const UNCATEGORIZED_NAME = '未分类';
+  const MONTH_WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日'];
+  const DETAIL_SHADES = [0.16, -0.12, 0.3, -0.24, 0.42, -0.34];
 
   /* ---------- State & storage ---------- */
 
@@ -34,7 +44,9 @@
   let state = loadState();
   let bootAt = Date.now();
   let currentView = 'focus';
-  let pieDate = startOfDay(new Date());
+  let statsPeriod = { mode: 'day', anchor: startOfDay(new Date()) };
+  let selectedCategoryId = null;
+  let heatmapMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
   let recordsShown = PAGE_SIZE;
   let confirmAction = null;
   let scheduleDraft = null;
@@ -44,7 +56,10 @@
   let lastCompletionMinutes = DEFAULT_SETTINGS.defaultFocus;
   let lastSeenDay = dateKey(new Date());
   let lastTitle = '';
-  let heatmapPinnedRight = true;
+  let currentSessionId = null;
+  let sessionDialogMode = 'complete';
+  let categoryEditingId = null;
+  let categoryDraftColor = CATEGORY_COLORS[0];
 
   /* ---------- Tiny DOM helpers ---------- */
 
@@ -97,17 +112,29 @@
     metricCompletionHint: $id('metricCompletionHint'),
     metricStreak: $id('metricStreak'),
     metricStreakHint: $id('metricStreakHint'),
-    heatmap: $id('heatmap'),
-    heatmapScroll: document.querySelector('.heatmap-scroll'),
+    distributionPanel: $id('distributionPanel'),
+    periodModeButtons: qsa('#periodModeSwitch button'),
+    periodTitle: $id('periodTitle'),
+    periodRange: $id('periodRange'),
+    periodPrevBtn: $id('periodPrevBtn'),
+    periodNextBtn: $id('periodNextBtn'),
+    periodDateInput: $id('periodDateInput'),
+    periodTodayBtn: $id('periodTodayBtn'),
+    distributionChart: $id('distributionChart'),
+    distributionSummary: $id('distributionSummary'),
+    distributionBackBtn: $id('distributionBackBtn'),
+    distributionListTitle: $id('distributionListTitle'),
+    distributionRange: $id('distributionRange'),
+    distributionTotal: $id('distributionTotal'),
+    categoryList: $id('categoryList'),
+    distributionEmpty: $id('distributionEmpty'),
+    distributionInsight: $id('distributionInsight'),
+    heatmapMonthLabel: $id('heatmapMonthLabel'),
+    heatmapPrevBtn: $id('heatmapPrevBtn'),
+    heatmapNextBtn: $id('heatmapNextBtn'),
+    monthGrid: $id('monthGrid'),
     heatmapFoot: $id('heatmapFoot'),
     chartTooltip: $id('chartTooltip'),
-    pieChart: $id('pieChart'),
-    pieLegend: $id('pieLegend'),
-    pieEmpty: $id('pieEmpty'),
-    pieInsight: $id('pieInsight'),
-    piePrevBtn: $id('piePrevBtn'),
-    pieNextBtn: $id('pieNextBtn'),
-    pieDateLabel: $id('pieDateLabel'),
     weekChart: $id('weekChart'),
     weekSubtitle: $id('weekSubtitle'),
     recordsList: $id('recordsList'),
@@ -119,6 +146,9 @@
     settingsBtn: $id('settingsBtn'),
     settingsDialog: $id('settingsDialog'),
     breakButtons: qsa('#breakDurationPicker button'),
+    overtimeToggle: $id('overtimeToggle'),
+    manageCategoriesBtn: $id('manageCategoriesBtn'),
+    categorySummary: $id('categorySummary'),
     soundToggle: $id('soundToggle'),
     notifyToggle: $id('notifyToggle'),
     notificationHint: $id('notificationHint'),
@@ -132,10 +162,26 @@
     installAppBtn: $id('installAppBtn'),
     installHint: $id('installHint'),
     completeDialog: $id('completeDialog'),
+    completionMark: $id('completionMark'),
+    completeEyebrow: $id('completeEyebrow'),
+    completeTitle: $id('completeTitle'),
     completeSummary: $id('completeSummary'),
+    sessionCompleteActions: $id('sessionCompleteActions'),
+    sessionCategoryChips: $id('sessionCategoryChips'),
+    sessionDetailInput: $id('sessionDetailInput'),
+    sessionManageCategoriesBtn: $id('sessionManageCategoriesBtn'),
     breakBtn: $id('breakBtn'),
     againBtn: $id('againBtn'),
     completeClose: $id('completeClose'),
+    categoryDialog: $id('categoryDialog'),
+    categoryManageList: $id('categoryManageList'),
+    categoryForm: $id('categoryForm'),
+    categoryNameInput: $id('categoryNameInput'),
+    categorySubmitBtn: $id('categorySubmitBtn'),
+    categoryColorSwatches: $id('categoryColorSwatches'),
+    categoryCancelEdit: $id('categoryCancelEdit'),
+    categoryFormLabel: $id('categoryFormLabel'),
+    categoryError: $id('categoryError'),
     confirmDialog: $id('confirmDialog'),
     confirmTitle: $id('confirmTitle'),
     confirmMessage: $id('confirmMessage'),
@@ -196,10 +242,15 @@
     return {
       version: 1,
       sessions: [],
+      categories: defaultCategories(),
       active: null,
       schedule: null,
       settings: { ...DEFAULT_SETTINGS },
     };
+  }
+
+  function defaultCategories() {
+    return DEFAULT_CATEGORIES.map((category) => ({ ...category }));
   }
 
   function saveState() {
@@ -225,18 +276,51 @@
     settings.breakMinutes = BREAK_PRESETS.includes(Number(settings.breakMinutes)) ? Number(settings.breakMinutes) : 5;
     settings.sound = Boolean(settings.sound);
     settings.notify = Boolean(settings.notify);
+    settings.overtimeEnabled = Boolean(settings.overtimeEnabled);
 
     const sessions = Array.isArray(raw.sessions)
       ? raw.sessions.map(normalizeSession).filter(Boolean)
       : [];
+    const categories = normalizeCategories(raw.categories);
 
     return {
       version: 1,
       sessions,
+      categories,
       active: normalizeActive(raw.active),
       schedule: normalizeSchedule(raw.schedule),
       settings,
     };
+  }
+
+  function normalizeCategories(raw) {
+    if (!Array.isArray(raw) || !raw.length) return defaultCategories();
+
+    const categories = [];
+    const usedIds = new Set();
+    const usedNames = new Set();
+
+    for (const item of raw) {
+      if (!item || typeof item !== 'object') continue;
+      const name = String(item.name || '').trim().slice(0, 12);
+      if (!name) continue;
+      const normalizedName = name.toLocaleLowerCase();
+      if (usedNames.has(normalizedName)) continue;
+
+      let id = typeof item.id === 'string' && item.id.trim() ? item.id.trim() : `cat-${uid()}`;
+      if (usedIds.has(id)) id = `cat-${uid()}`;
+      const color = /^#[0-9a-f]{6}$/i.test(String(item.color || ''))
+        ? String(item.color)
+        : CATEGORY_COLORS[categories.length % CATEGORY_COLORS.length];
+
+      categories.push({ id, name, color });
+      usedIds.add(id);
+      usedNames.add(normalizedName);
+
+      if (categories.length >= 12) break;
+    }
+
+    return categories.length ? categories : defaultCategories();
   }
 
   function normalizeSession(raw) {
@@ -263,6 +347,8 @@
       focusedSeconds: Math.max(1, Math.round(focusedSeconds)),
       completed: Boolean(raw.completed),
       source: raw.source === 'scheduled' ? 'scheduled' : 'now',
+      categoryId: typeof raw.categoryId === 'string' && raw.categoryId ? raw.categoryId : null,
+      detail: typeof raw.detail === 'string' ? raw.detail.trim().slice(0, 80) : '',
       spans,
     };
   }
@@ -303,6 +389,7 @@
       source: raw.source === 'scheduled' ? 'scheduled' : 'now',
       startedAt,
       status,
+      overtime: Boolean(raw.overtime),
       spans,
       currentSpanStart,
     };
@@ -364,6 +451,13 @@
     return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
   }
 
+  function parseDateInputValue(value) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))) return null;
+    const [year, month, day] = value.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    return Number.isFinite(date.getTime()) ? date : null;
+  }
+
   function formatClock(totalSeconds) {
     const safe = Math.max(0, Math.ceil(totalSeconds));
     const minutes = Math.floor(safe / 60);
@@ -402,18 +496,6 @@
     else if (date.getFullYear() === today.getFullYear()) dayLabel = `${date.getMonth() + 1}月${date.getDate()}日`;
     else dayLabel = `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
     return `${dayLabel} ${formatHHMM(date)}`;
-  }
-
-  function formatPieDate(date) {
-    const today = new Date();
-    if (sameDay(date, today)) return '今天';
-    if (sameDay(date, addDays(today, -1))) return '昨天';
-    if (date.getFullYear() === today.getFullYear()) return `${date.getMonth() + 1}月${date.getDate()}日`;
-    return `${String(date.getFullYear()).slice(-2)}年${date.getMonth() + 1}月`;
-  }
-
-  function formatFullDate(date) {
-    return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
   }
 
   function formatDateTimeCSV(timestamp) {
@@ -479,10 +561,13 @@
     const isActive = Boolean(active);
     const isBreak = Boolean(active && active.mode === 'break');
     const isPaused = Boolean(active && active.status === 'paused');
+    const isOvertime = Boolean(active && active.mode === 'focus' && active.overtime);
 
     els.timerCard.classList.toggle('is-running', Boolean(active && active.status === 'running' && !isBreak));
     els.timerCard.classList.toggle('is-paused', isPaused);
     els.timerCard.classList.toggle('is-break', isBreak);
+    els.timerCard.classList.toggle('is-overtime', isOvertime);
+    els.clockDisplay.classList.toggle('is-overtime', isOvertime);
     els.durationControl.hidden = isActive;
     els.idleActions.hidden = isActive;
     els.runningActions.hidden = !isActive;
@@ -502,6 +587,12 @@
       els.timerModeLabel.textContent = isPaused ? '休息已暂停' : '休息中';
       els.clockCaption.textContent = '让眼睛离开屏幕，慢慢呼吸';
       els.focusHeadline.textContent = '让身心，松一松。';
+    } else if (isOvertime) {
+      els.timerModeLabel.textContent = isPaused ? '正计时已暂停' : '正计时中';
+      els.clockCaption.textContent = isPaused
+        ? '加时暂停，准备好再继续'
+        : '计划已完成，继续积累也很好';
+      els.focusHeadline.textContent = '再往前一点，也很好。';
     } else if (isPaused) {
       els.timerModeLabel.textContent = '专注已暂停';
       els.clockCaption.textContent = '停下来也没关系，准备好再继续';
@@ -526,28 +617,45 @@
   function updateTimerDisplay() {
     const active = state.active;
     const plannedSeconds = active ? active.plannedSeconds : state.settings.defaultFocus * 60;
-    const remaining = active ? Math.max(0, plannedSeconds - getElapsedSeconds(active)) : plannedSeconds;
-    const fraction = plannedSeconds > 0 ? Math.max(0, Math.min(1, remaining / plannedSeconds)) : 1;
+    const elapsed = active ? getElapsedSeconds(active) : 0;
+    const isOvertime = Boolean(active && active.mode === 'focus' && active.overtime);
+    let clockText;
+    let fraction;
 
-    const clockText = formatClock(remaining);
+    if (isOvertime) {
+      const overtimeSeconds = Math.max(0, elapsed - plannedSeconds);
+      clockText = `+${formatClock(overtimeSeconds)}`;
+      fraction = 1;
+      const overtimeCeil = Math.max(0, Math.ceil(overtimeSeconds));
+      els.clockDisplay.setAttribute(
+        'aria-label',
+        `已加时 ${Math.floor(overtimeCeil / 60)} 分 ${overtimeCeil % 60} 秒`
+      );
+    } else {
+      const remaining = active ? Math.max(0, plannedSeconds - elapsed) : plannedSeconds;
+      fraction = plannedSeconds > 0 ? Math.max(0, Math.min(1, remaining / plannedSeconds)) : 1;
+      clockText = formatClock(remaining);
+      const ariaRemaining = Math.max(0, Math.ceil(remaining));
+      els.clockDisplay.setAttribute(
+        'aria-label',
+        active
+          ? `剩余 ${Math.floor(ariaRemaining / 60)} 分 ${ariaRemaining % 60} 秒`
+          : `${state.settings.defaultFocus} 分钟`
+      );
+    }
+
     if (els.clockDisplay.textContent !== clockText) els.clockDisplay.textContent = clockText;
-
-    const ariaRemaining = Math.max(0, Math.ceil(remaining));
-    els.clockDisplay.setAttribute(
-      'aria-label',
-      active
-        ? `剩余 ${Math.floor(ariaRemaining / 60)} 分 ${ariaRemaining % 60} 秒`
-        : `${state.settings.defaultFocus} 分钟`
-    );
 
     const offset = RING_CIRCUMFERENCE * (1 - fraction);
     els.progressRing.style.strokeDashoffset = offset.toFixed(2);
 
     let title;
     if (active) {
-      const label = active.status === 'paused'
-        ? (active.mode === 'break' ? '休息暂停' : '专注暂停')
-        : (active.mode === 'break' ? '休息中' : '专注中');
+      const label = isOvertime
+        ? (active.status === 'paused' ? '正计时暂停' : '正计时中')
+        : active.status === 'paused'
+          ? (active.mode === 'break' ? '休息暂停' : '专注暂停')
+          : (active.mode === 'break' ? '休息中' : '专注中');
       title = `${clockText} · ${label} | 日日新`;
     } else if (currentView === 'stats') {
       title = '专注统计 · 日日新';
@@ -700,6 +808,7 @@
       source: source === 'scheduled' ? 'scheduled' : 'now',
       startedAt: now,
       status: 'running',
+      overtime: false,
       spans: [],
       currentSpanStart: now,
     };
@@ -727,6 +836,7 @@
       source: 'now',
       startedAt: now,
       status: 'running',
+      overtime: false,
       spans: [],
       currentSpanStart: now,
     };
@@ -777,9 +887,14 @@
       return;
     }
 
+    const overtimeSeconds = active.overtime ? Math.max(0, elapsed - active.plannedSeconds) : 0;
+    const overtimeNote = overtimeSeconds >= 30
+      ? `（含加时 ${formatDurationCN(overtimeSeconds)}）`
+      : '';
+
     openConfirm({
-      title: '提前结束专注？',
-      message: `已经专注 ${formatDurationCN(elapsed)}。结束后，这段时间会记入统计。`,
+      title: active.overtime ? '结束这次正计时？' : '提前结束专注？',
+      message: `已经专注 ${formatDurationCN(elapsed)}${overtimeNote}。结束后会记入统计，并让你选择专注分类。`,
       okLabel: '结束并记录',
       onOk: () => completeActive({ auto: false }),
     });
@@ -806,6 +921,7 @@
     closeCurrentSpan(active, now);
     const rawElapsed = getElapsedSeconds(active, now);
     const plannedSeconds = active.plannedSeconds;
+    const isOvertime = Boolean(active.overtime);
     const completed = auto || rawElapsed >= plannedSeconds - 0.4;
 
     if (!completed && rawElapsed < 60) {
@@ -817,8 +933,19 @@
       return;
     }
 
-    const focusedSeconds = completed ? plannedSeconds : Math.max(1, Math.round(rawElapsed));
-    const spans = completed ? trimSpans(active.spans, plannedSeconds) : active.spans.map((span) => ({ ...span }));
+    let focusedSeconds;
+    let spans;
+
+    if (completed) {
+      focusedSeconds = isOvertime
+        ? Math.max(plannedSeconds, Math.round(rawElapsed))
+        : plannedSeconds;
+      spans = trimSpans(active.spans, focusedSeconds);
+    } else {
+      focusedSeconds = Math.max(1, Math.round(rawElapsed));
+      spans = active.spans.map((span) => ({ ...span }));
+    }
+
     const endedAt = spans.length ? spans[spans.length - 1].end : now;
 
     const session = {
@@ -830,6 +957,8 @@
       focusedSeconds,
       completed,
       source: active.source,
+      categoryId: null,
+      detail: '',
       spans,
     };
 
@@ -848,31 +977,274 @@
 
     if (!els.statsView.hidden) renderStats();
 
-    if (completed) {
-      if (auto) {
-        if (state.settings.sound) playChime();
-        sendNotification('专注完成', `这一轮 ${formatDurationCN(focusedSeconds)}，起来活动一下吧。`);
-        showCompletionDialog(session);
-      } else {
-        toast(`已记录 ${formatDurationCN(focusedSeconds)}专注。`);
-      }
-    } else {
-      toast(`提前结束，已记录 ${formatDurationCN(focusedSeconds)}专注。`);
+    if (auto) {
+      if (state.settings.sound) playChime();
+      sendNotification('专注完成', `这一轮 ${formatDurationCN(focusedSeconds)}，起来活动一下吧。`);
     }
+
+    showSessionDialog(session, { auto, edit: false });
   }
 
-  function showCompletionDialog(session) {
+  function showSessionDialog(session, { auto = false, edit = false } = {}) {
+    if (!session) return;
     closeAllDialogs(els.completeDialog);
-    els.completeSummary.textContent = `专注了 ${formatDurationCN(session.focusedSeconds)}。起身走走，喝口水。`;
+
+    currentSessionId = session.id;
+    sessionDialogMode = edit ? 'edit' : 'complete';
+    const overtimeSeconds = Math.max(0, session.focusedSeconds - session.plannedSeconds);
+    const overtimeCopy = overtimeSeconds >= 30 ? `（含加时 ${formatDurationCN(overtimeSeconds)}）` : '';
+
+    els.completeDialog.classList.toggle('is-editing', edit);
+    els.completionMark.style.display = edit ? 'none' : '';
+    els.sessionCompleteActions.hidden = edit;
+    els.completeClose.className = edit ? 'btn btn-primary' : 'dialog-dismiss';
+    els.completeClose.textContent = '保存并关闭';
+
+    if (edit) {
+      els.completeEyebrow.textContent = '修改记录';
+      els.completeTitle.textContent = '这条专注记录';
+      els.completeSummary.textContent = `${formatRecordRange(session)} · ${formatDurationCN(session.focusedSeconds)}${overtimeCopy}`;
+    } else if (auto) {
+      els.completeEyebrow.textContent = '专注完成';
+      els.completeTitle.textContent = '这一轮，完成了。';
+      els.completeSummary.textContent = `专注了 ${formatDurationCN(session.focusedSeconds)}${overtimeCopy}。给它归个类吧。`;
+    } else if (session.completed) {
+      els.completeEyebrow.textContent = '专注结束';
+      els.completeTitle.textContent = '这一轮，完成了。';
+      els.completeSummary.textContent = `专注了 ${formatDurationCN(session.focusedSeconds)}${overtimeCopy}。给它归个类吧。`;
+    } else {
+      els.completeEyebrow.textContent = '专注结束';
+      els.completeTitle.textContent = '这一轮，先到这里。';
+      els.completeSummary.textContent = `专注了 ${formatDurationCN(session.focusedSeconds)}。给它归个类，统计会更清楚。`;
+    }
+
     els.breakBtn.textContent = `休息 ${state.settings.breakMinutes} 分钟`;
+    els.sessionDetailInput.value = session.detail || '';
+    renderSessionCategoryChips();
 
     if (!els.completeDialog.open) {
       try {
         els.completeDialog.showModal();
       } catch (error) {
-        toast('这一轮完成了，休息一下吧。');
+        toast('记录已保存，分类窗口打开失败。');
       }
     }
+  }
+
+  /* ---------- Session classification ---------- */
+
+  function getCurrentSession() {
+    if (!currentSessionId) return null;
+    return state.sessions.find((session) => session.id === currentSessionId) || null;
+  }
+
+  function renderSessionCategoryChips() {
+    const session = getCurrentSession();
+    if (!session || !els.sessionCategoryChips) return;
+
+    const selected = session.categoryId && getCategoryById(session.categoryId)
+      ? session.categoryId
+      : UNCATEGORIZED_KEY;
+
+    const chips = state.categories.map((category) => `
+      <button class="category-chip${selected === category.id ? ' is-selected' : ''}" type="button" data-session-category="${escapeHTML(category.id)}" aria-pressed="${selected === category.id}">
+        <span class="category-dot" style="background:${category.color}"></span>
+        ${escapeHTML(category.name)}
+      </button>
+    `);
+
+    chips.push(`
+      <button class="category-chip${selected === UNCATEGORIZED_KEY ? ' is-selected' : ''}" type="button" data-session-category="${UNCATEGORIZED_KEY}" aria-pressed="${selected === UNCATEGORIZED_KEY}">
+        <span class="category-dot" style="background:${UNCATEGORIZED_COLOR}"></span>
+        ${UNCATEGORIZED_NAME}
+      </button>
+    `);
+
+    els.sessionCategoryChips.innerHTML = chips.join('');
+  }
+
+  function setSessionCategory(key) {
+    const session = getCurrentSession();
+    if (!session) return;
+    session.categoryId = key === UNCATEGORIZED_KEY ? null : key;
+    saveState();
+    renderSessionCategoryChips();
+  }
+
+  function commitSessionDialog() {
+    const session = getCurrentSession();
+    if (!session) return;
+
+    const detail = String(els.sessionDetailInput.value || '').trim().slice(0, 80);
+    if (session.detail !== detail) {
+      session.detail = detail;
+      saveState();
+    }
+
+    currentSessionId = null;
+    sessionDialogMode = 'complete';
+    if (!els.statsView.hidden) renderStats();
+  }
+
+  function openSessionEditor(sessionId) {
+    const session = state.sessions.find((item) => item.id === sessionId);
+    if (!session) return;
+    showSessionDialog(session, { edit: true });
+  }
+
+  /* ---------- Category manager ---------- */
+
+  function syncCategorySummary() {
+    if (!els.categorySummary) return;
+    els.categorySummary.textContent = state.categories.length
+      ? state.categories.map((category) => category.name).join('、')
+      : '还没有分类';
+  }
+
+  function openCategoryDialog() {
+    categoryEditingId = null;
+    resetCategoryForm();
+    renderCategoryManager();
+    openDialog(els.categoryDialog);
+  }
+
+  function resetCategoryForm() {
+    categoryEditingId = null;
+    categoryDraftColor = CATEGORY_COLORS.find((color) =>
+      !state.categories.some((category) => category.color === color)
+    ) || CATEGORY_COLORS[state.categories.length % CATEGORY_COLORS.length];
+    els.categoryNameInput.value = '';
+    els.categoryFormLabel.textContent = '添加分类';
+    els.categorySubmitBtn.textContent = '添加';
+    els.categoryCancelEdit.hidden = true;
+    els.categoryError.hidden = true;
+    els.categoryError.textContent = '';
+    renderCategoryColorSwatches();
+  }
+
+  function renderCategoryColorSwatches() {
+    els.categoryColorSwatches.innerHTML = CATEGORY_COLORS.map((color) => `
+      <button class="color-swatch${color === categoryDraftColor ? ' is-selected' : ''}" type="button" data-color="${color}" style="background:${color}" aria-label="选择颜色 ${color}" aria-pressed="${color === categoryDraftColor}"></button>
+    `).join('');
+  }
+
+  function renderCategoryManager() {
+    if (!els.categoryManageList) return;
+
+    if (!state.categories.length) {
+      els.categoryManageList.innerHTML = '<div class="category-empty">还没有分类，先添加一个吧。</div>';
+    } else {
+      els.categoryManageList.innerHTML = state.categories.map((category) => {
+        const usage = state.sessions.filter((session) => session.categoryId === category.id).length;
+        return `
+          <div class="category-manage-row">
+            <span class="category-dot" style="background:${category.color}"></span>
+            <button class="category-manage-name" type="button" data-edit-category="${escapeHTML(category.id)}"><span>${escapeHTML(category.name)}</span></button>
+            <span class="category-manage-usage">${usage} 次</span>
+            <button class="category-manage-delete" type="button" data-delete-category="${escapeHTML(category.id)}" aria-label="删除 ${escapeHTML(category.name)}" title="删除分类">
+              <svg class="icon" aria-hidden="true"><use href="#i-x"></use></svg>
+            </button>
+          </div>
+        `;
+      }).join('');
+    }
+
+    renderCategoryColorSwatches();
+  }
+
+  function beginCategoryEdit(categoryId) {
+    const category = getCategoryById(categoryId);
+    if (!category) return;
+    categoryEditingId = category.id;
+    categoryDraftColor = category.color;
+    els.categoryNameInput.value = category.name;
+    els.categoryFormLabel.textContent = '修改分类';
+    els.categorySubmitBtn.textContent = '保存修改';
+    els.categoryCancelEdit.hidden = false;
+    els.categoryError.hidden = true;
+    renderCategoryColorSwatches();
+    els.categoryNameInput.focus();
+  }
+
+  function submitCategory(event) {
+    event.preventDefault();
+    const name = String(els.categoryNameInput.value || '').trim().slice(0, 12);
+    if (!name) {
+      els.categoryError.textContent = '先给分类起个名字吧。';
+      els.categoryError.hidden = false;
+      return;
+    }
+
+    const duplicate = state.categories.some((category) =>
+      category.id !== categoryEditingId &&
+      category.name.toLocaleLowerCase() === name.toLocaleLowerCase()
+    );
+    if (duplicate) {
+      els.categoryError.textContent = '这个分类已经存在了。';
+      els.categoryError.hidden = false;
+      return;
+    }
+
+    if (!categoryEditingId && state.categories.length >= 12) {
+      els.categoryError.textContent = '最多可以添加 12 个分类。';
+      els.categoryError.hidden = false;
+      return;
+    }
+
+    if (categoryEditingId) {
+      const category = getCategoryById(categoryEditingId);
+      if (category) {
+        category.name = name;
+        category.color = categoryDraftColor;
+        toast('分类已更新。');
+      }
+    } else {
+      state.categories.push({
+        id: `cat-${uid()}`,
+        name,
+        color: categoryDraftColor,
+      });
+      toast('分类已添加。');
+    }
+
+    saveState();
+    syncCategorySummary();
+    renderCategoryManager();
+    if (!els.statsView.hidden) renderStats();
+    renderSessionCategoryChips();
+    resetCategoryForm();
+  }
+
+  function deleteCategory(categoryId) {
+    const category = getCategoryById(categoryId);
+    if (!category) return;
+    if (state.categories.length <= 1) {
+      toast('至少保留一个分类。');
+      return;
+    }
+
+    const usage = state.sessions.filter((session) => session.categoryId === category.id).length;
+    openConfirm({
+      title: `删除「${category.name}」？`,
+      message: usage
+        ? `有 ${usage} 条专注记录正在使用这个分类，删除后会归入「未分类」。`
+        : '删除后可以从头重新建立，确定删除吗？',
+      okLabel: '删除分类',
+      onOk: () => {
+        state.categories = state.categories.filter((item) => item.id !== category.id);
+        state.sessions.forEach((session) => {
+          if (session.categoryId === category.id) session.categoryId = null;
+        });
+        if (selectedCategoryId === category.id) selectedCategoryId = null;
+        if (categoryEditingId === category.id) resetCategoryForm();
+        saveState();
+        syncCategorySummary();
+        renderCategoryManager();
+        renderSessionCategoryChips();
+        if (!els.statsView.hidden) renderStats();
+        toast('分类已删除。');
+      },
+    });
   }
 
   /* ---------- Schedule ---------- */
@@ -1142,8 +1514,8 @@
       els.metricStreakHint.textContent = '今天还没开始，别让火苗断了';
     }
 
-    renderHeatmap(daily);
-    renderPie();
+    renderMonthHeatmap(daily);
+    renderDistribution();
     renderWeek(daily);
     renderRecords();
   }
@@ -1203,93 +1575,99 @@
     return 4;
   }
 
-  function renderHeatmap(daily) {
+  function renderMonthHeatmap(daily) {
     const today = startOfDay(new Date());
-    const currentWeekStart = startOfWeekMonday(today);
-    const firstWeekStart = addDays(currentWeekStart, -(HEAT_WEEKS - 1) * 7);
+    const selectedMonth = new Date(heatmapMonth.getFullYear(), heatmapMonth.getMonth(), 1);
+    const currentMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    if (selectedMonth.getTime() > currentMonth.getTime()) heatmapMonth = currentMonth;
 
-    const monthsEl = document.createElement('div');
-    monthsEl.className = 'heatmap-months';
+    const year = heatmapMonth.getFullYear();
+    const month = heatmapMonth.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const leading = (firstDay.getDay() + 6) % 7;
 
-    let previousMonth = null;
-    for (let week = 0; week < HEAT_WEEKS; week += 1) {
-      const thursday = addDays(firstWeekStart, week * 7 + 3);
-      const month = thursday.getMonth();
-      if (month !== previousMonth) {
-        const label = document.createElement('span');
-        label.className = 'heatmap-month';
-        label.style.gridColumnStart = String(week + 1);
-        label.textContent = `${month + 1}月`;
-        monthsEl.appendChild(label);
-        previousMonth = month;
-      }
+    const cells = [];
+    for (let i = 0; i < leading; i += 1) {
+      const blank = document.createElement('span');
+      blank.className = 'month-day is-empty';
+      blank.setAttribute('aria-hidden', 'true');
+      cells.push(blank);
     }
 
-    const weekdaysEl = document.createElement('div');
-    weekdaysEl.className = 'heatmap-weekdays';
-    WEEKDAY_LABELS.forEach((label) => {
-      const item = document.createElement('span');
-      item.textContent = label;
-      weekdaysEl.appendChild(item);
-    });
-
-    const gridEl = document.createElement('div');
-    gridEl.className = 'heatmap-grid';
-
-    let rangeSeconds = 0;
+    let monthSeconds = 0;
     let activeDays = 0;
 
-    for (let week = 0; week < HEAT_WEEKS; week += 1) {
-      const weekEl = document.createElement('div');
-      weekEl.className = 'heatmap-week';
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const date = new Date(year, month, day);
+      const seconds = daily.get(dateKey(date)) || 0;
+      const isFuture = date.getTime() > today.getTime();
+      const level = heatLevel(seconds);
+      const minutes = Math.round(seconds / 60);
+      const dateText = `${year}年${month + 1}月${day}日`;
+      const tip = seconds > 0
+        ? `${dateText} · 专注 ${formatDurationCN(seconds)}`
+        : `${dateText} · 没有专注记录`;
 
-      for (let day = 0; day < 7; day += 1) {
-        const date = addDays(firstWeekStart, week * 7 + day);
-        const seconds = daily.get(dateKey(date)) || 0;
-        const future = date.getTime() > today.getTime();
-        const cell = document.createElement('span');
-        cell.className = `heat-cell level-${heatLevel(seconds)}${future ? ' is-future' : ''}`;
+      const cell = document.createElement('button');
+      cell.type = 'button';
+      cell.className = `month-day level-${level}${isFuture ? ' is-future' : ''}${sameDay(date, today) ? ' is-today' : ''}`;
+      cell.dataset.date = dateKey(date);
+      cell.dataset.tip = tip;
+      cell.disabled = isFuture;
+      cell.setAttribute('aria-label', tip);
 
-        if (future) {
-          cell.setAttribute('aria-hidden', 'true');
-        } else {
-          rangeSeconds += seconds;
-          if (seconds > 0) activeDays += 1;
+      const number = document.createElement('span');
+      number.className = 'day-number';
+      number.textContent = String(day);
+      cell.appendChild(number);
 
-          const dateText = `${date.getMonth() + 1}月${date.getDate()}日`;
-          const tip = seconds > 0
-            ? `${dateText} · 专注 ${formatDurationCN(seconds)}`
-            : `${dateText} · 没有专注记录`;
-          cell.dataset.tip = tip;
-          cell.setAttribute('role', 'img');
-          cell.setAttribute('aria-label', tip);
-        }
-
-        weekEl.appendChild(cell);
+      if (minutes > 0) {
+        const amount = document.createElement('span');
+        amount.className = 'day-minutes';
+        amount.textContent = `${minutes} 分`;
+        cell.appendChild(amount);
       }
 
-      gridEl.appendChild(weekEl);
+      if (!isFuture) {
+        monthSeconds += seconds;
+        if (seconds > 0) activeDays += 1;
+        cell.addEventListener('click', () => selectDayForStats(date));
+      }
+
+      cells.push(cell);
     }
 
-    const body = document.createElement('div');
-    body.className = 'heatmap-body';
-    body.append(weekdaysEl, gridEl);
-
-    els.heatmap.replaceChildren(monthsEl, body);
-    els.heatmap.setAttribute(
+    els.monthGrid.replaceChildren(...cells);
+    els.monthGrid.setAttribute(
       'aria-label',
-      rangeSeconds > 0 ? `过去一年专注热力图，共专注${formatDurationCN(rangeSeconds)}，活跃${activeDays}天。` : '过去一年暂无专注记录。'
+      monthSeconds > 0
+        ? `${year}年${month + 1}月专注热力图，共专注${formatDurationCN(monthSeconds)}，活跃${activeDays}天。`
+        : `${year}年${month + 1}月暂无专注记录。`
     );
 
-    els.heatmapFoot.textContent = rangeSeconds > 0
-      ? `过去一年 · ${activeDays} 天有专注 · 共 ${formatDurationCN(rangeSeconds)}`
-      : '还没有专注记录，开始第一个番茄，给今天点一盏灯。';
+    els.heatmapMonthLabel.textContent = `${year}年${month + 1}月`;
+    els.heatmapMonthLabel.title = sameDay(selectedMonth, currentMonth) ? '本月' : '回到本月';
+    els.heatmapNextBtn.disabled = selectedMonth.getTime() >= currentMonth.getTime();
+    els.heatmapPrevBtn.disabled = false;
+    els.heatmapFoot.textContent = monthSeconds > 0
+      ? `${month + 1}月 · ${activeDays} 天有专注 · 共 ${formatDurationCN(monthSeconds)}`
+      : `${month + 1}月还没有专注记录，开始第一个番茄，给今天点一盏灯。`;
 
     hideHeatTooltip();
-    heatmapPinnedRight = true;
-    window.requestAnimationFrame(() => {
-      if (els.heatmapScroll) els.heatmapScroll.scrollLeft = els.heatmapScroll.scrollWidth;
-    });
+  }
+
+  function selectDayForStats(date) {
+    statsPeriod = { mode: 'day', anchor: startOfDay(date) };
+    selectedCategoryId = null;
+    updatePeriodControls();
+    renderDistribution();
+    if (els.distributionPanel) {
+      els.distributionPanel.scrollIntoView({
+        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+        block: 'start',
+      });
+    }
   }
 
   function startOfWeekMonday(value) {
@@ -1298,97 +1676,303 @@
     return addDays(date, -day);
   }
 
-  function renderPie() {
-    const today = startOfDay(new Date());
-    if (pieDate.getTime() > today.getTime()) pieDate = today;
+  function escapeHTML(value) {
+    return String(value).replace(/[&<>"']/g, (character) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    }[character]));
+  }
 
-    const dayStart = pieDate.getTime();
-    const dayEnd = addDays(pieDate, 1).getTime();
-    const periods = PIE_PERIODS.map((period) => ({
-      ...period,
-      seconds: 0,
-    }));
-    let sessionCount = 0;
+  function getCategoryById(id) {
+    return state.categories.find((category) => category.id === id) || null;
+  }
+
+  function categoryDisplayForSession(session) {
+    const category = session.categoryId ? getCategoryById(session.categoryId) : null;
+    return category
+      ? { key: category.id, name: category.name, color: category.color }
+      : { key: UNCATEGORIZED_KEY, name: UNCATEGORIZED_NAME, color: UNCATEGORIZED_COLOR };
+  }
+
+  function shadeColor(hex, amount) {
+    const value = String(hex || '').replace('#', '');
+    if (!/^[0-9a-f]{6}$/i.test(value)) return hex;
+    const number = parseInt(value, 16);
+    const target = amount >= 0 ? 255 : 0;
+    const ratio = Math.min(1, Math.abs(amount));
+    const red = Math.round(((number >> 16) & 255) + (target - ((number >> 16) & 255)) * ratio);
+    const green = Math.round(((number >> 8) & 255) + (target - ((number >> 8) & 255)) * ratio);
+    const blue = Math.round((number & 255) + (target - (number & 255)) * ratio);
+    return `#${[red, green, blue].map((channel) => channel.toString(16).padStart(2, '0')).join('')}`;
+  }
+
+  function getPeriodBounds(mode, anchor) {
+    const base = startOfDay(anchor);
+    if (mode === 'week') {
+      const start = startOfWeekMonday(base);
+      return { start, end: addDays(start, 7) };
+    }
+    if (mode === 'month') {
+      const start = new Date(base.getFullYear(), base.getMonth(), 1);
+      return { start, end: new Date(base.getFullYear(), base.getMonth() + 1, 1) };
+    }
+    return { start: base, end: addDays(base, 1) };
+  }
+
+  function normalizePeriodAnchor(mode, date) {
+    return getPeriodBounds(mode, date).start;
+  }
+
+  function currentPeriodStart(mode) {
+    return normalizePeriodAnchor(mode, new Date());
+  }
+
+  function formatWeekSpan(start, endExclusive) {
+    const last = addDays(endExclusive, -1);
+    const sameYear = start.getFullYear() === last.getFullYear();
+    const prefix = sameYear ? '' : `${start.getFullYear()}年`;
+    if (start.getMonth() === last.getMonth()) {
+      return `${prefix}${start.getMonth() + 1}月${start.getDate()}日–${last.getDate()}日`;
+    }
+    return `${prefix}${start.getMonth() + 1}月${start.getDate()}日–${last.getMonth() + 1}月${last.getDate()}日`;
+  }
+
+  function formatPeriodTitle() {
+    const { start, end } = getPeriodBounds(statsPeriod.mode, statsPeriod.anchor);
+    const current = start.getTime() === currentPeriodStart(statsPeriod.mode).getTime();
+    if (statsPeriod.mode === 'week') {
+      return `${current ? '本周 · ' : ''}${formatWeekSpan(start, end)}`;
+    }
+    if (statsPeriod.mode === 'month') {
+      return `${current ? '本月 · ' : ''}${start.getFullYear()}年${start.getMonth() + 1}月`;
+    }
+    return current ? '今天' : `${start.getMonth() + 1}月${start.getDate()}日`;
+  }
+
+  function formatPeriodRange() {
+    const { start, end } = getPeriodBounds(statsPeriod.mode, statsPeriod.anchor);
+    if (statsPeriod.mode === 'week') return `${start.getFullYear()}年 · 周一至周日`;
+    if (statsPeriod.mode === 'month') {
+      const days = Math.round((end - start) / 86400000);
+      return `${start.getFullYear()}年 · ${days} 天`;
+    }
+    return `${start.getFullYear()}年${start.getMonth() + 1}月${start.getDate()}日 · 周${WEEKDAYS_SHORT[start.getDay()]}`;
+  }
+
+  function updatePeriodControls() {
+    const { start } = getPeriodBounds(statsPeriod.mode, statsPeriod.anchor);
+    const currentStart = currentPeriodStart(statsPeriod.mode);
+
+    els.periodTitle.textContent = formatPeriodTitle();
+    els.periodRange.textContent = formatPeriodRange();
+    els.periodDateInput.value = dateKey(start);
+    els.periodDateInput.max = dateKey(new Date());
+    els.periodNextBtn.disabled = start.getTime() >= currentStart.getTime();
+    els.periodTodayBtn.hidden = start.getTime() >= currentStart.getTime();
+    els.periodTodayBtn.textContent = statsPeriod.mode === 'day'
+      ? '回到今天'
+      : statsPeriod.mode === 'week' ? '回到本周' : '回到本月';
+
+    els.periodModeButtons.forEach((button) => {
+      const selected = button.dataset.mode === statsPeriod.mode;
+      button.classList.toggle('is-selected', selected);
+      button.setAttribute('aria-pressed', String(selected));
+    });
+  }
+
+  function moveStatsPeriod(direction) {
+    const { start } = getPeriodBounds(statsPeriod.mode, statsPeriod.anchor);
+    let next = new Date(start);
+
+    if (statsPeriod.mode === 'day') next = addDays(next, direction);
+    else if (statsPeriod.mode === 'week') next = addDays(next, direction * 7);
+    else next = new Date(next.getFullYear(), next.getMonth() + direction, 1);
+
+    const currentStart = currentPeriodStart(statsPeriod.mode);
+    if (next.getTime() > currentStart.getTime()) next = currentStart;
+
+    statsPeriod.anchor = normalizePeriodAnchor(statsPeriod.mode, next);
+    selectedCategoryId = null;
+    updatePeriodControls();
+    renderDistribution();
+  }
+
+  function setStatsPeriodMode(mode) {
+    statsPeriod.mode = mode;
+    statsPeriod.anchor = normalizePeriodAnchor(mode, statsPeriod.anchor);
+    const currentStart = currentPeriodStart(mode);
+    if (statsPeriod.anchor.getTime() > currentStart.getTime()) statsPeriod.anchor = currentStart;
+    selectedCategoryId = null;
+    updatePeriodControls();
+    renderDistribution();
+  }
+
+  function buildCategoryGroups(start, end) {
+    const map = new Map();
 
     for (const session of state.sessions) {
-      let overlapsDay = false;
-      for (const span of session.spans || []) {
-        if (span.end > dayStart && span.start < dayEnd) {
-          overlapsDay = true;
-          break;
-        }
-      }
-      if (overlapsDay) sessionCount += 1;
+      const seconds = secondsInRange(session, start.getTime(), end.getTime());
+      if (seconds <= 0.5) continue;
 
-      for (const period of periods) {
-        period.seconds += secondsInMinuteRanges(session.spans, dayStart, period.ranges);
+      const category = categoryDisplayForSession(session);
+      let group = map.get(category.key);
+      if (!group) {
+        group = { ...category, seconds: 0, count: 0 };
+        map.set(category.key, group);
       }
+      group.seconds += seconds;
+      group.count += 1;
     }
 
-    const totalSeconds = periods.reduce((sum, period) => sum + period.seconds, 0);
-    const totalMinutes = Math.round(totalSeconds / 60);
-    const visible = periods.filter((period) => period.seconds > 0.01);
+    return [...map.values()].sort((a, b) => b.seconds - a.seconds);
+  }
 
+  function buildDetailGroups(start, end, categoryKey) {
+    const map = new Map();
+
+    for (const session of state.sessions) {
+      if (categoryDisplayForSession(session).key !== categoryKey) continue;
+      const seconds = secondsInRange(session, start.getTime(), end.getTime());
+      if (seconds <= 0.5) continue;
+
+      const label = session.detail.trim() || '未填写具体内容';
+      let group = map.get(label);
+      if (!group) {
+        group = { key: `detail-${map.size}`, name: label, seconds: 0, count: 0 };
+        map.set(label, group);
+      }
+      group.seconds += seconds;
+      group.count += 1;
+    }
+
+    return [...map.values()].sort((a, b) => b.seconds - a.seconds);
+  }
+
+  function donutMarkup(segments, totalSeconds, clickable) {
+    const visible = segments.filter((segment) => segment.seconds > 0.01);
     let svg = '<svg viewBox="0 0 190 190" aria-hidden="true">';
     svg += '<circle class="donut-track" cx="95" cy="95" r="76"></circle>';
 
     if (totalSeconds > 0) {
       let offset = 0;
       const gap = visible.length > 1 ? 0.7 : 0;
-      for (const period of periods) {
-        if (period.seconds <= 0) continue;
-        const percentage = (period.seconds / totalSeconds) * 100;
+      for (const segment of visible) {
+        const percentage = (segment.seconds / totalSeconds) * 100;
         const dash = Math.max(0.1, percentage - gap);
-        svg += `<circle class="donut-segment" cx="95" cy="95" r="76" pathLength="100" stroke="${period.color}" stroke-dasharray="${dash.toFixed(2)} ${(100 - dash).toFixed(2)}" stroke-dashoffset="${(-offset).toFixed(2)}" transform="rotate(-90 95 95)"><title>${period.label} ${Math.round(period.seconds / 60)} 分钟</title></circle>`;
+        const keyAttribute = clickable
+          ? ` data-category-key="${escapeHTML(segment.key)}"`
+          : '';
+        svg += `<circle class="donut-segment${clickable ? ' is-donut-clickable' : ''}" cx="95" cy="95" r="76" pathLength="100" stroke="${segment.color}" stroke-dasharray="${dash.toFixed(2)} ${(100 - dash).toFixed(2)}" stroke-dashoffset="${(-offset).toFixed(2)}" transform="rotate(-90 95 95)"${keyAttribute}><title>${escapeHTML(segment.name)} ${Math.round(segment.seconds / 60)} 分钟</title></circle>`;
         offset += percentage;
       }
     }
 
     svg += '</svg>';
-
-    const centerValue = totalSeconds > 0 ? Math.max(1, totalMinutes) : 0;
-    els.pieChart.innerHTML = `${svg}<div class="donut-center"><strong>${centerValue}</strong><span>分钟</span></div>`;
-    els.pieChart.setAttribute(
-      'aria-label',
-      totalSeconds > 0 ? `每日专注分布，共 ${formatDurationCN(totalSeconds)}。` : '每日专注分布，暂无记录。'
-    );
-
-    els.pieLegend.innerHTML = periods.map((period) => `
-      <div class="legend-row">
-        <span class="legend-dot" style="background:${period.color}"></span>
-        <div class="legend-copy">
-          <strong>${period.label}</strong>
-          <span>${period.range}</span>
-        </div>
-        <span class="legend-value">${Math.round(period.seconds / 60)} 分</span>
-      </div>
-    `).join('');
-
-    if (totalSeconds > 0) {
-      const peak = periods.reduce((best, period) => (period.seconds > best.seconds ? period : best), periods[0]);
-      els.pieInsight.innerHTML = `共 <strong>${sessionCount}</strong> 次专注 · 最投入 <strong>${peak.label}</strong> ${Math.round(peak.seconds / 60)} 分钟`;
-      els.pieInsight.hidden = false;
-    } else {
-      els.pieInsight.hidden = true;
-    }
-
-    els.pieEmpty.hidden = totalSeconds > 0;
-    els.pieDateLabel.textContent = formatPieDate(pieDate);
-    els.pieDateLabel.title = `${formatFullDate(pieDate)}，点击回到今天`;
-    els.pieNextBtn.disabled = pieDate.getTime() >= today.getTime();
-    hideHeatTooltip();
+    const centerValue = totalSeconds > 0 ? Math.max(1, Math.round(totalSeconds / 60)) : 0;
+    return `${svg}<div class="donut-center"><strong>${centerValue}</strong><span>分钟</span></div>`;
   }
 
-  function secondsInMinuteRanges(spans, dayStart, ranges) {
-    let seconds = 0;
-    for (const span of spans || []) {
-      for (const range of ranges) {
-        const from = Math.max(span.start, dayStart + range[0] * 60000);
-        const to = Math.min(span.end, dayStart + range[1] * 60000);
-        if (to > from) seconds += (to - from) / 1000;
+  function categoryRowsMarkup(groups, totalSeconds, detailMode) {
+    return groups.map((group) => {
+      const percentage = totalSeconds > 0 ? Math.round((group.seconds / totalSeconds) * 100) : 0;
+      const copy = `<span class="category-copy"><strong>${escapeHTML(group.name)}</strong><span>${group.count} 次</span></span>`;
+      const value = `<span class="category-value"><strong>${formatDurationCN(group.seconds)}</strong><span>${percentage}%</span></span>`;
+
+      if (detailMode) {
+        return `<div class="category-row is-static">
+          <span class="category-dot" style="background:${group.color}"></span>
+          ${copy}
+          ${value}
+        </div>`;
       }
+
+      return `<button class="category-row" type="button" data-category-key="${escapeHTML(group.key)}">
+        <span class="category-dot" style="background:${group.color}"></span>
+        ${copy}
+        ${value}
+        <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg>
+      </button>`;
+    }).join('');
+  }
+
+  function renderDistribution() {
+    updatePeriodControls();
+
+    const { start, end } = getPeriodBounds(statsPeriod.mode, statsPeriod.anchor);
+    const groups = buildCategoryGroups(start, end);
+    const totalSeconds = groups.reduce((sum, group) => sum + group.seconds, 0);
+    const totalCount = groups.reduce((sum, group) => sum + group.count, 0);
+
+    let selectedGroup = selectedCategoryId
+      ? groups.find((group) => group.key === selectedCategoryId)
+      : null;
+    if (selectedCategoryId && !selectedGroup) selectedCategoryId = null;
+
+    let details = null;
+    let viewTotal = totalSeconds;
+    let viewCount = totalCount;
+
+    if (selectedGroup) {
+      details = buildDetailGroups(start, end, selectedGroup.key);
+      viewTotal = details.reduce((sum, group) => sum + group.seconds, 0);
+      viewCount = details.reduce((sum, group) => sum + group.count, 0);
     }
-    return seconds;
+
+    const segments = details
+      ? details.map((group, index) => ({
+        ...group,
+        color: shadeColor(selectedGroup.color, DETAIL_SHADES[index % DETAIL_SHADES.length]),
+      }))
+      : groups;
+
+    els.distributionChart.innerHTML = donutMarkup(segments, viewTotal, !details);
+    els.distributionChart.setAttribute(
+      'aria-label',
+      viewTotal > 0
+        ? `${details ? selectedGroup.name : '专注分类'}分布，共 ${formatDurationCN(viewTotal)}。`
+        : '这个区间暂无专注记录。'
+    );
+
+    els.distributionBackBtn.hidden = !details;
+    els.distributionListTitle.textContent = details ? selectedGroup.name : '全部分类';
+    els.distributionRange.textContent = details ? `具体内容 · ${formatPeriodRange()}` : formatPeriodRange();
+    els.distributionTotal.textContent = formatDurationCN(viewTotal);
+    els.distributionSummary.textContent = viewCount
+      ? `共 ${viewCount} 次专注 · 平均 ${Math.max(1, Math.round(viewTotal / 60 / viewCount))} 分钟`
+      : '共 0 次专注';
+
+    if (viewTotal <= 0) {
+      els.categoryList.innerHTML = '';
+      els.categoryList.setAttribute('aria-label', '暂无专注分类数据');
+      els.distributionEmpty.hidden = false;
+      els.distributionEmpty.textContent = details
+        ? `「${selectedGroup.name}」在这个区间还没有记录。`
+        : '这个区间还没有专注记录。';
+    } else {
+      els.distributionEmpty.hidden = true;
+      els.categoryList.innerHTML = details
+        ? categoryRowsMarkup(details, viewTotal, true)
+        : categoryRowsMarkup(groups, viewTotal, false);
+      els.categoryList.setAttribute('aria-label', details ? `${selectedGroup.name}的具体内容` : '专注分类列表');
+    }
+
+    if (viewTotal > 0) {
+      if (details) {
+        const top = details[0];
+        els.distributionInsight.innerHTML = `共 <strong>${viewCount}</strong> 次 · 最常做 <strong>${escapeHTML(top.name)}</strong>`;
+      } else {
+        const top = groups[0];
+        els.distributionInsight.innerHTML = `共 <strong>${totalCount}</strong> 次专注 · 最投入 <strong>${escapeHTML(top.name)}</strong> ${formatDurationCN(top.seconds)}`;
+      }
+      els.distributionInsight.hidden = false;
+    } else {
+      els.distributionInsight.hidden = true;
+    }
+
+    hideHeatTooltip();
   }
 
   function renderWeek(daily) {
@@ -1417,13 +2001,13 @@
       const title = `${day.date.getMonth() + 1}月${day.date.getDate()}日 · ${day.seconds > 0 ? `专注 ${formatDurationCN(day.seconds)}` : '没有专注'}`;
 
       return `
-        <div class="week-col${isToday ? ' is-today' : ''}${day.seconds <= 0 ? ' is-zero' : ''}" title="${title}">
+        <button class="week-col is-clickable${isToday ? ' is-today' : ''}${day.seconds <= 0 ? ' is-zero' : ''}" type="button" data-week-date="${dateKey(day.date)}" title="${title}" aria-label="${title}，查看当天分类">
           <span class="week-value">${minutes}</span>
           <div class="week-bar-wrap">
             <div class="week-bar" style="height:${height.toFixed(1)}%"></div>
           </div>
           <span class="week-label">${label}</span>
-        </div>
+        </button>
       `;
     }).join('');
 
@@ -1468,22 +2052,31 @@
     const visible = sorted.slice(0, recordsShown);
     els.recordsList.innerHTML = visible.map((session) => {
       const minutes = Math.max(1, Math.round(session.focusedSeconds / 60));
+      const overtimeSeconds = Math.max(0, session.focusedSeconds - session.plannedSeconds);
+      const category = categoryDisplayForSession(session);
       const subParts = [session.completed ? '完整完成' : '提前结束'];
+      if (overtimeSeconds >= 30) subParts.push(`含加时 ${formatDurationCN(overtimeSeconds)}`);
       if (session.source === 'scheduled') subParts.push('预约开始');
+
       return `
-        <div class="record-row">
+        <button class="record-row" type="button" data-session-id="${escapeHTML(session.id)}" aria-label="修改这条专注记录的分类">
           <div class="record-main">
             <span class="record-dot${session.completed ? ' is-complete' : ''}" aria-hidden="true"></span>
             <div class="record-copy">
               <strong>${formatRecordRange(session)}</strong>
-              <span>${subParts.join(' · ')}</span>
+              <div class="record-subline">
+                <span>${escapeHTML(subParts.join(' · '))}</span>
+                <span class="record-category"><i style="background:${category.color}"></i>${escapeHTML(category.name)}</span>
+                ${session.detail ? `<span class="record-detail">${escapeHTML(session.detail)}</span>` : ''}
+              </div>
             </div>
           </div>
           <div class="record-side">
             <span class="record-duration">${minutes} 分钟</span>
             <span class="record-badge${session.completed ? ' is-complete' : ''}">${session.completed ? '完成' : '提前'}</span>
+            <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg>
           </div>
-        </div>
+        </button>
       `;
     }).join('');
 
@@ -1536,14 +2129,17 @@
     }
 
     const rows = [
-      ['开始时间', '结束时间', '计划时长（分钟）', '实际专注（分钟）', '状态', '启动方式'],
+      ['开始时间', '结束时间', '计划时长（分钟）', '实际专注（分钟）', '加时（分钟）', '状态', '启动方式', '专注分类', '具体内容'],
       ...sessions.map((session) => [
         formatDateTimeCSV(session.startedAt),
         formatDateTimeCSV(session.endedAt),
         String(Math.round(session.plannedSeconds / 60)),
         (session.focusedSeconds / 60).toFixed(1),
+        (Math.max(0, session.focusedSeconds - session.plannedSeconds) / 60).toFixed(1),
         session.completed ? '完成' : '提前结束',
         session.source === 'scheduled' ? '预约' : '立即',
+        categoryDisplayForSession(session).name,
+        session.detail || '',
       ]),
     ];
 
@@ -1568,7 +2164,9 @@
 
   function syncSettingsUI() {
     setSelected(els.breakButtons, state.settings.breakMinutes);
+    els.overtimeToggle.checked = state.settings.overtimeEnabled;
     els.soundToggle.checked = state.settings.sound;
+    syncCategorySummary();
     syncNotificationUI();
     updateInstallUI();
   }
@@ -1632,7 +2230,7 @@
   function registerServiceWorker() {
     if (!('serviceWorker' in navigator) || !/^https?:$/.test(window.location.protocol)) return;
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js').catch(() => {
+      navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).catch(() => {
         /* Offline mode is optional; the timer still works without it. */
       });
     });
@@ -1791,7 +2389,18 @@
   }
 
   function openDialog(dialog) {
-    if (!dialog.open) dialog.showModal();
+    if (dialog.open) return;
+    try {
+      dialog.showModal();
+    } catch (error) {
+      // Some older browsers only allow one modal at a time.
+      closeAllDialogs(dialog);
+      try {
+        dialog.showModal();
+      } catch (fallbackError) {
+        dialog.setAttribute('open', '');
+      }
+    }
   }
 
   function closeDialog(dialog) {
@@ -1870,6 +2479,7 @@
 
     if (view === 'stats') {
       recordsShown = PAGE_SIZE;
+      selectedCategoryId = null;
       renderStats();
     }
 
@@ -1890,8 +2500,16 @@
     if (state.active) {
       if (state.active.status === 'running') {
         const elapsed = getElapsedSeconds(state.active, now);
-        if (elapsed + 0.001 >= state.active.plannedSeconds) {
-          completeActive({ auto: true });
+        if (elapsed + 0.001 >= state.active.plannedSeconds && !state.active.overtime) {
+          if (state.active.mode === 'focus' && state.settings.overtimeEnabled) {
+            state.active.overtime = true;
+            saveState();
+            renderTimer();
+            toast('计划完成，已转为正计时。');
+            sendNotification('计划完成', '已自动转为正计时，结束时记得选择分类。');
+          } else {
+            completeActive({ auto: true });
+          }
         } else {
           updateTimerDisplay();
         }
@@ -1940,6 +2558,13 @@
       });
     });
 
+    els.overtimeToggle.addEventListener('change', () => {
+      state.settings.overtimeEnabled = els.overtimeToggle.checked;
+      saveState();
+    });
+
+    els.manageCategoriesBtn.addEventListener('click', openCategoryDialog);
+
     els.soundToggle.addEventListener('change', () => {
       state.settings.sound = els.soundToggle.checked;
       saveState();
@@ -1954,10 +2579,11 @@
     els.clearDataBtn.addEventListener('click', () => {
       openConfirm({
         title: '清空专注记录？',
-        message: '所有历史专注记录会被删除，统计也会归零。当前设置、预约和正在进行的计时不受影响。此操作无法撤销。',
+        message: '所有历史专注记录会被删除，统计也会归零。当前设置、分类、预约和正在进行的计时不受影响。此操作无法撤销。',
         okLabel: '清空记录',
         onOk: () => {
           state.sessions = [];
+          selectedCategoryId = null;
           saveState();
           renderToday();
           renderStats();
@@ -1966,22 +2592,80 @@
       });
     });
 
-    els.piePrevBtn.addEventListener('click', () => {
-      pieDate = addDays(pieDate, -1);
-      renderPie();
+    els.periodModeButtons.forEach((button) => {
+      button.addEventListener('click', () => setStatsPeriodMode(button.dataset.mode));
     });
 
-    els.pieNextBtn.addEventListener('click', () => {
-      const today = startOfDay(new Date());
-      const next = addDays(pieDate, 1);
-      if (next.getTime() > today.getTime()) return;
-      pieDate = next;
-      renderPie();
+    els.periodPrevBtn.addEventListener('click', () => moveStatsPeriod(-1));
+    els.periodNextBtn.addEventListener('click', () => moveStatsPeriod(1));
+    els.periodTodayBtn.addEventListener('click', () => {
+      statsPeriod.anchor = currentPeriodStart(statsPeriod.mode);
+      selectedCategoryId = null;
+      updatePeriodControls();
+      renderDistribution();
     });
 
-    els.pieDateLabel.addEventListener('click', () => {
-      pieDate = startOfDay(new Date());
-      renderPie();
+    els.periodDateInput.addEventListener('change', () => {
+      const date = parseDateInputValue(els.periodDateInput.value);
+      if (!date) {
+        updatePeriodControls();
+        return;
+      }
+      let anchor = normalizePeriodAnchor(statsPeriod.mode, date);
+      const currentStart = currentPeriodStart(statsPeriod.mode);
+      if (anchor.getTime() > currentStart.getTime()) anchor = currentStart;
+      statsPeriod.anchor = anchor;
+      selectedCategoryId = null;
+      updatePeriodControls();
+      renderDistribution();
+    });
+
+    els.distributionBackBtn.addEventListener('click', () => {
+      selectedCategoryId = null;
+      renderDistribution();
+    });
+
+    els.categoryList.addEventListener('click', (event) => {
+      const goFocus = event.target.closest('[data-go-focus]');
+      if (goFocus) {
+        switchView('focus');
+        return;
+      }
+      const row = event.target.closest('[data-category-key]');
+      if (!row) return;
+      selectedCategoryId = row.dataset.categoryKey;
+      renderDistribution();
+    });
+
+    els.distributionChart.addEventListener('click', (event) => {
+      const segment = event.target.closest('[data-category-key]');
+      if (!segment) return;
+      selectedCategoryId = segment.dataset.categoryKey;
+      renderDistribution();
+    });
+
+    els.heatmapPrevBtn.addEventListener('click', () => {
+      heatmapMonth = new Date(heatmapMonth.getFullYear(), heatmapMonth.getMonth() - 1, 1);
+      renderMonthHeatmap(buildDailySecondsMap());
+    });
+
+    els.heatmapNextBtn.addEventListener('click', () => {
+      if (els.heatmapNextBtn.disabled) return;
+      heatmapMonth = new Date(heatmapMonth.getFullYear(), heatmapMonth.getMonth() + 1, 1);
+      renderMonthHeatmap(buildDailySecondsMap());
+    });
+
+    els.heatmapMonthLabel.addEventListener('click', () => {
+      const now = new Date();
+      heatmapMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      renderMonthHeatmap(buildDailySecondsMap());
+    });
+
+    els.weekChart.addEventListener('click', (event) => {
+      const column = event.target.closest('[data-week-date]');
+      if (!column) return;
+      const date = parseDateInputValue(column.dataset.weekDate);
+      if (date) selectDayForStats(date);
     });
 
     els.recordsMoreBtn.addEventListener('click', () => {
@@ -1990,21 +2674,72 @@
     });
 
     els.recordsList.addEventListener('click', (event) => {
-      const button = event.target.closest('[data-go-focus]');
-      if (button) switchView('focus');
+      const goFocus = event.target.closest('[data-go-focus]');
+      if (goFocus) {
+        switchView('focus');
+        return;
+      }
+      const row = event.target.closest('[data-session-id]');
+      if (row) openSessionEditor(row.dataset.sessionId);
     });
 
+    els.sessionCategoryChips.addEventListener('click', (event) => {
+      const chip = event.target.closest('[data-session-category]');
+      if (!chip) return;
+      setSessionCategory(chip.dataset.sessionCategory);
+    });
+
+    els.sessionDetailInput.addEventListener('input', () => {
+      const session = getCurrentSession();
+      if (!session) return;
+      session.detail = String(els.sessionDetailInput.value || '').slice(0, 80);
+      saveState();
+    });
+
+    els.sessionManageCategoriesBtn.addEventListener('click', openCategoryDialog);
+
     els.breakBtn.addEventListener('click', () => {
+      commitSessionDialog();
       closeDialog(els.completeDialog);
       startBreak(state.settings.breakMinutes);
     });
 
     els.againBtn.addEventListener('click', () => {
+      commitSessionDialog();
       closeDialog(els.completeDialog);
       startFocus(lastCompletionMinutes || state.settings.defaultFocus, 'now');
     });
 
     els.completeClose.addEventListener('click', () => closeDialog(els.completeDialog));
+    els.completeDialog.addEventListener('close', commitSessionDialog);
+
+    els.categoryForm.addEventListener('submit', submitCategory);
+
+    els.categoryManageList.addEventListener('click', (event) => {
+      const edit = event.target.closest('[data-edit-category]');
+      if (edit) {
+        beginCategoryEdit(edit.dataset.editCategory);
+        return;
+      }
+      const remove = event.target.closest('[data-delete-category]');
+      if (remove) deleteCategory(remove.dataset.deleteCategory);
+    });
+
+    els.categoryColorSwatches.addEventListener('click', (event) => {
+      const swatch = event.target.closest('[data-color]');
+      if (!swatch) return;
+      categoryDraftColor = swatch.dataset.color;
+      renderCategoryColorSwatches();
+    });
+
+    els.categoryCancelEdit.addEventListener('click', resetCategoryForm);
+    els.categoryNameInput.addEventListener('input', () => {
+      els.categoryError.hidden = true;
+    });
+    els.categoryDialog.addEventListener('close', () => {
+      syncCategorySummary();
+      renderSessionCategoryChips();
+    });
 
     els.confirmOk.addEventListener('click', () => {
       const action = confirmAction;
@@ -2025,7 +2760,7 @@
       });
     });
 
-    [els.durationDialog, els.scheduleDialog, els.settingsDialog, els.confirmDialog].forEach((dialog) => {
+    [els.durationDialog, els.scheduleDialog, els.settingsDialog, els.confirmDialog, els.categoryDialog, els.completeDialog].forEach((dialog) => {
       dialog.addEventListener('click', (event) => {
         if (event.target === dialog) dialog.close();
       });
@@ -2071,31 +2806,19 @@
 
     els.installAppBtn.addEventListener('click', installApp);
 
-    els.heatmap.addEventListener('pointerover', (event) => {
-      const cell = event.target.closest('.heat-cell');
-      if (cell && els.heatmap.contains(cell)) showHeatTooltip(cell);
+    els.monthGrid.addEventListener('pointerover', (event) => {
+      const cell = event.target.closest('.month-day');
+      if (cell && els.monthGrid.contains(cell)) showHeatTooltip(cell);
     });
 
-    els.heatmap.addEventListener('pointerout', (event) => {
-      const cell = event.target.closest('.heat-cell');
-      if (cell && els.heatmap.contains(cell)) hideHeatTooltip();
+    els.monthGrid.addEventListener('pointerout', (event) => {
+      const cell = event.target.closest('.month-day');
+      if (cell && els.monthGrid.contains(cell)) hideHeatTooltip();
     });
 
-    els.heatmap.addEventListener('pointerup', hideHeatTooltip);
-    els.heatmapScroll.addEventListener('scroll', () => {
-      hideHeatTooltip();
-      heatmapPinnedRight =
-        els.heatmapScroll.scrollLeft + els.heatmapScroll.clientWidth >= els.heatmapScroll.scrollWidth - 8;
-    }, { passive: true });
+    els.monthGrid.addEventListener('pointerup', hideHeatTooltip);
     window.addEventListener('scroll', hideHeatTooltip, { passive: true });
-    window.addEventListener('resize', () => {
-      hideHeatTooltip();
-      if (!els.statsView.hidden && heatmapPinnedRight) {
-        window.requestAnimationFrame(() => {
-          els.heatmapScroll.scrollLeft = els.heatmapScroll.scrollWidth;
-        });
-      }
-    });
+    window.addEventListener('resize', hideHeatTooltip);
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden) tick();
     });
