@@ -260,13 +260,8 @@
         <section class="panel distribution-panel" id="distributionPanel" aria-labelledby="distributionTitle">
           <div class="panel-head distribution-head">
             <div>
-              <h2 id="distributionTitle">专注分布</h2>
-              <p>给每次专注归个类，看看时间去了哪里。</p>
-            </div>
-            <div class="segmented segmented-sm period-mode" id="periodModeSwitch" role="group" aria-label="选择统计周期">
-              <button type="button" data-mode="day" class="is-selected">日</button>
-              <button type="button" data-mode="week">周</button>
-              <button type="button" data-mode="month">月</button>
+              <h2 id="distributionTitle">每日专注</h2>
+              <p>先看这一天的分类占比，点进分类查看每一次专注。</p>
             </div>
           </div>
           <div class="period-toolbar">
@@ -275,11 +270,11 @@
               <span id="periodRange">10月18日</span>
             </div>
             <div class="period-nav">
-              <button class="icon-btn icon-btn-sm" id="periodPrevBtn" type="button" aria-label="上一个周期">
+              <button class="icon-btn icon-btn-sm" id="periodPrevBtn" type="button" aria-label="前一天">
                 <svg class="icon" aria-hidden="true"><use href="#i-arrow-left"></use></svg>
               </button>
               <input class="period-date-input" id="periodDateInput" type="date" aria-label="选择要查看的日期">
-              <button class="icon-btn icon-btn-sm" id="periodNextBtn" type="button" aria-label="下一个周期">
+              <button class="icon-btn icon-btn-sm" id="periodNextBtn" type="button" aria-label="后一天">
                 <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg>
               </button>
               <button class="text-btn" id="periodTodayBtn" type="button" hidden>回到今天</button>
@@ -304,16 +299,37 @@
               <div class="category-list" id="categoryList"></div>
             </div>
           </div>
-          <p class="distribution-empty" id="distributionEmpty" hidden>这个区间还没有专注记录。</p>
+          <p class="distribution-empty" id="distributionEmpty" hidden>这一天还没有专注记录。</p>
           <p class="pie-insight" id="distributionInsight"></p>
         </section>
 
         <div class="stats-grid">
+          <section class="panel week-panel" aria-labelledby="weekTitle">
+            <div class="panel-head">
+              <div>
+                <h2 id="weekTitle">每周专注</h2>
+                <p id="weekSubtitle">本周 · 每天前进一点点。</p>
+              </div>
+            </div>
+            <div class="week-toolbar">
+              <button class="icon-btn icon-btn-sm" id="weekPrevBtn" type="button" aria-label="上一周">
+                <svg class="icon" aria-hidden="true"><use href="#i-arrow-left"></use></svg>
+              </button>
+              <input class="week-date-input" id="weekDateInput" type="date" aria-label="选择要查看的周">
+              <button class="icon-btn icon-btn-sm" id="weekNextBtn" type="button" aria-label="下一周">
+                <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg>
+              </button>
+              <button class="text-btn" id="weekTodayBtn" type="button" hidden>回到本周</button>
+            </div>
+            <div class="week-chart" id="weekChart"></div>
+            <p class="week-hint">点一根柱子，查看那天的每日专注。</p>
+          </section>
+
           <section class="panel heatmap-panel" aria-labelledby="heatmapTitle">
             <div class="panel-head">
               <div>
-                <h2 id="heatmapTitle">专注热力图</h2>
-                <p id="heatmapSubtitle">一个月一张日历，颜色越深，投入越多。</p>
+                <h2 id="heatmapTitle">每月专注</h2>
+                <p id="heatmapSubtitle">月历热力图，颜色越深，投入越多。</p>
               </div>
               <div class="heatmap-legend" aria-hidden="true">
                 <span>少</span>
@@ -329,6 +345,7 @@
               <button class="icon-btn icon-btn-sm" id="heatmapNextBtn" type="button" aria-label="下个月">
                 <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg>
               </button>
+              <input class="month-date-input" id="heatmapDateInput" type="date" aria-label="选择要查看的月份">
             </div>
             <div class="month-calendar">
               <div class="month-weekdays" aria-hidden="true">
@@ -338,30 +355,7 @@
             </div>
             <p class="heatmap-foot" id="heatmapFoot"></p>
           </section>
-
-          <section class="panel week-panel" aria-labelledby="weekTitle">
-            <div class="panel-head">
-              <div>
-                <h2 id="weekTitle">最近 7 天</h2>
-                <p id="weekSubtitle">每天前进一点点。</p>
-              </div>
-            </div>
-            <div class="week-chart" id="weekChart"></div>
-            <p class="week-hint">点一根柱子，查看那天的分类分布。</p>
-          </section>
         </div>
-
-        <section class="panel records-panel" aria-labelledby="recordsTitle">
-          <div class="panel-head">
-            <div>
-              <h2 id="recordsTitle">专注记录</h2>
-              <p id="recordsSubtitle">点开一条记录，可以补充分类和具体做了什么。</p>
-            </div>
-            <span class="records-count" id="recordsCount">0 条</span>
-          </div>
-          <div class="records-list" id="recordsList"></div>
-          <button class="btn btn-ghost btn-more" id="recordsMoreBtn" type="button" hidden>显示更多</button>
-        </section>
 
         <p class="stats-footnote">
           <svg class="icon" aria-hidden="true"><use href="#i-leaf"></use></svg>

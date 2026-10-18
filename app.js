@@ -5,7 +5,6 @@
 
   const STORAGE_KEY = 'rrx-focus-v1';
   const BREAK_PRESETS = [5, 10, 15];
-  const PAGE_SIZE = 30;
   const RING_RADIUS = 158;
   const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 
@@ -35,8 +34,6 @@
   const UNCATEGORIZED_KEY = '__uncategorized__';
   const UNCATEGORIZED_COLOR = '#b7afa2';
   const UNCATEGORIZED_NAME = '未分类';
-  const MONTH_WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日'];
-  const DETAIL_SHADES = [0.16, -0.12, 0.3, -0.24, 0.42, -0.34];
 
   /* ---------- State & storage ---------- */
 
@@ -44,10 +41,10 @@
   let state = loadState();
   let bootAt = Date.now();
   let currentView = 'focus';
-  let statsPeriod = { mode: 'day', anchor: startOfDay(new Date()) };
-  let selectedCategoryId = null;
+  let dailyDate = startOfDay(new Date());
+  let selectedDailyCategoryId = null;
+  let weekStart = startOfWeekMonday(new Date());
   let heatmapMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-  let recordsShown = PAGE_SIZE;
   let confirmAction = null;
   let scheduleDraft = null;
   let durationDraft = DEFAULT_SETTINGS.defaultFocus;
@@ -57,7 +54,6 @@
   let lastSeenDay = dateKey(new Date());
   let lastTitle = '';
   let currentSessionId = null;
-  let sessionDialogMode = 'complete';
   let categoryEditingId = null;
   let categoryDraftColor = CATEGORY_COLORS[0];
 
@@ -113,7 +109,6 @@
     metricStreak: $id('metricStreak'),
     metricStreakHint: $id('metricStreakHint'),
     distributionPanel: $id('distributionPanel'),
-    periodModeButtons: qsa('#periodModeSwitch button'),
     periodTitle: $id('periodTitle'),
     periodRange: $id('periodRange'),
     periodPrevBtn: $id('periodPrevBtn'),
@@ -132,14 +127,16 @@
     heatmapMonthLabel: $id('heatmapMonthLabel'),
     heatmapPrevBtn: $id('heatmapPrevBtn'),
     heatmapNextBtn: $id('heatmapNextBtn'),
+    heatmapDateInput: $id('heatmapDateInput'),
     monthGrid: $id('monthGrid'),
     heatmapFoot: $id('heatmapFoot'),
     chartTooltip: $id('chartTooltip'),
     weekChart: $id('weekChart'),
     weekSubtitle: $id('weekSubtitle'),
-    recordsList: $id('recordsList'),
-    recordsCount: $id('recordsCount'),
-    recordsMoreBtn: $id('recordsMoreBtn'),
+    weekPrevBtn: $id('weekPrevBtn'),
+    weekNextBtn: $id('weekNextBtn'),
+    weekDateInput: $id('weekDateInput'),
+    weekTodayBtn: $id('weekTodayBtn'),
     exportBtn: $id('exportBtn'),
     exportBtnSettings: $id('exportBtnSettings'),
     clearDataBtn: $id('clearDataBtn'),
@@ -990,7 +987,6 @@
     closeAllDialogs(els.completeDialog);
 
     currentSessionId = session.id;
-    sessionDialogMode = edit ? 'edit' : 'complete';
     const overtimeSeconds = Math.max(0, session.focusedSeconds - session.plannedSeconds);
     const overtimeCopy = overtimeSeconds >= 30 ? `（含加时 ${formatDurationCN(overtimeSeconds)}）` : '';
     const partial = !edit && !session.completed;
@@ -1083,7 +1079,6 @@
     }
 
     currentSessionId = null;
-    sessionDialogMode = 'complete';
     if (!els.statsView.hidden) renderStats();
   }
 
@@ -1236,7 +1231,7 @@
         state.sessions.forEach((session) => {
           if (session.categoryId === category.id) session.categoryId = null;
         });
-        if (selectedCategoryId === category.id) selectedCategoryId = null;
+        if (selectedDailyCategoryId === category.id) selectedDailyCategoryId = null;
         if (categoryEditingId === category.id) resetCategoryForm();
         saveState();
         syncCategorySummary();
@@ -1515,10 +1510,9 @@
       els.metricStreakHint.textContent = '今天还没开始，别让火苗断了';
     }
 
-    renderMonthHeatmap(daily);
-    renderDistribution();
+    renderDailyPanel();
     renderWeek(daily);
-    renderRecords();
+    renderMonthHeatmap(daily);
   }
 
   function buildDailySecondsMap() {
@@ -1633,7 +1627,7 @@
       if (!isFuture) {
         monthSeconds += seconds;
         if (seconds > 0) activeDays += 1;
-        cell.addEventListener('click', () => selectDayForStats(date));
+        cell.addEventListener('click', () => selectDailyDate(date));
       }
 
       cells.push(cell);
@@ -1651,6 +1645,8 @@
     els.heatmapMonthLabel.title = sameDay(selectedMonth, currentMonth) ? '本月' : '回到本月';
     els.heatmapNextBtn.disabled = selectedMonth.getTime() >= currentMonth.getTime();
     els.heatmapPrevBtn.disabled = false;
+    els.heatmapDateInput.value = dateKey(selectedMonth);
+    els.heatmapDateInput.max = dateKey(new Date());
     els.heatmapFoot.textContent = monthSeconds > 0
       ? `${month + 1}月 · ${activeDays} 天有专注 · 共 ${formatDurationCN(monthSeconds)}`
       : `${month + 1}月还没有专注记录，开始第一个番茄，给今天点一盏灯。`;
@@ -1658,11 +1654,11 @@
     hideHeatTooltip();
   }
 
-  function selectDayForStats(date) {
-    statsPeriod = { mode: 'day', anchor: startOfDay(date) };
-    selectedCategoryId = null;
-    updatePeriodControls();
-    renderDistribution();
+  function selectDailyDate(date) {
+    dailyDate = startOfDay(date);
+    selectedDailyCategoryId = null;
+    updateDailyControls();
+    renderDailyPanel();
     if (els.distributionPanel) {
       els.distributionPanel.scrollIntoView({
         behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
@@ -1698,39 +1694,6 @@
       : { key: UNCATEGORIZED_KEY, name: UNCATEGORIZED_NAME, color: UNCATEGORIZED_COLOR };
   }
 
-  function shadeColor(hex, amount) {
-    const value = String(hex || '').replace('#', '');
-    if (!/^[0-9a-f]{6}$/i.test(value)) return hex;
-    const number = parseInt(value, 16);
-    const target = amount >= 0 ? 255 : 0;
-    const ratio = Math.min(1, Math.abs(amount));
-    const red = Math.round(((number >> 16) & 255) + (target - ((number >> 16) & 255)) * ratio);
-    const green = Math.round(((number >> 8) & 255) + (target - ((number >> 8) & 255)) * ratio);
-    const blue = Math.round((number & 255) + (target - (number & 255)) * ratio);
-    return `#${[red, green, blue].map((channel) => channel.toString(16).padStart(2, '0')).join('')}`;
-  }
-
-  function getPeriodBounds(mode, anchor) {
-    const base = startOfDay(anchor);
-    if (mode === 'week') {
-      const start = startOfWeekMonday(base);
-      return { start, end: addDays(start, 7) };
-    }
-    if (mode === 'month') {
-      const start = new Date(base.getFullYear(), base.getMonth(), 1);
-      return { start, end: new Date(base.getFullYear(), base.getMonth() + 1, 1) };
-    }
-    return { start: base, end: addDays(base, 1) };
-  }
-
-  function normalizePeriodAnchor(mode, date) {
-    return getPeriodBounds(mode, date).start;
-  }
-
-  function currentPeriodStart(mode) {
-    return normalizePeriodAnchor(mode, new Date());
-  }
-
   function formatWeekSpan(start, endExclusive) {
     const last = addDays(endExclusive, -1);
     const sameYear = start.getFullYear() === last.getFullYear();
@@ -1741,74 +1704,56 @@
     return `${prefix}${start.getMonth() + 1}月${start.getDate()}日–${last.getMonth() + 1}月${last.getDate()}日`;
   }
 
-  function formatPeriodTitle() {
-    const { start, end } = getPeriodBounds(statsPeriod.mode, statsPeriod.anchor);
-    const current = start.getTime() === currentPeriodStart(statsPeriod.mode).getTime();
-    if (statsPeriod.mode === 'week') {
-      return `${current ? '本周 · ' : ''}${formatWeekSpan(start, end)}`;
-    }
-    if (statsPeriod.mode === 'month') {
-      return `${current ? '本月 · ' : ''}${start.getFullYear()}年${start.getMonth() + 1}月`;
-    }
-    return current ? '今天' : `${start.getMonth() + 1}月${start.getDate()}日`;
+  function formatDayLabel(date) {
+    return sameDay(date, new Date()) ? '今天' : `${date.getMonth() + 1}月${date.getDate()}日`;
   }
 
-  function formatPeriodRange() {
-    const { start, end } = getPeriodBounds(statsPeriod.mode, statsPeriod.anchor);
-    if (statsPeriod.mode === 'week') return `${start.getFullYear()}年 · 周一至周日`;
-    if (statsPeriod.mode === 'month') {
-      const days = Math.round((end - start) / 86400000);
-      return `${start.getFullYear()}年 · ${days} 天`;
-    }
-    return `${start.getFullYear()}年${start.getMonth() + 1}月${start.getDate()}日 · 周${WEEKDAYS_SHORT[start.getDay()]}`;
+  function formatDayRange(date) {
+    return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 · 周${WEEKDAYS_SHORT[date.getDay()]}`;
   }
 
-  function updatePeriodControls() {
-    const { start } = getPeriodBounds(statsPeriod.mode, statsPeriod.anchor);
-    const currentStart = currentPeriodStart(statsPeriod.mode);
+  function updateDailyControls() {
+    const today = startOfDay(new Date());
+    if (dailyDate.getTime() > today.getTime()) dailyDate = today;
 
-    els.periodTitle.textContent = formatPeriodTitle();
-    els.periodRange.textContent = formatPeriodRange();
-    els.periodDateInput.value = dateKey(start);
-    els.periodDateInput.max = dateKey(new Date());
-    els.periodNextBtn.disabled = start.getTime() >= currentStart.getTime();
-    els.periodTodayBtn.hidden = start.getTime() >= currentStart.getTime();
-    els.periodTodayBtn.textContent = statsPeriod.mode === 'day'
-      ? '回到今天'
-      : statsPeriod.mode === 'week' ? '回到本周' : '回到本月';
-
-    els.periodModeButtons.forEach((button) => {
-      const selected = button.dataset.mode === statsPeriod.mode;
-      button.classList.toggle('is-selected', selected);
-      button.setAttribute('aria-pressed', String(selected));
-    });
+    els.periodTitle.textContent = formatDayLabel(dailyDate);
+    els.periodRange.textContent = formatDayRange(dailyDate);
+    els.periodDateInput.value = dateKey(dailyDate);
+    els.periodDateInput.max = dateKey(today);
+    els.periodNextBtn.disabled = dailyDate.getTime() >= today.getTime();
+    els.periodTodayBtn.hidden = dailyDate.getTime() >= today.getTime();
+    els.periodTodayBtn.textContent = '回到今天';
   }
 
-  function moveStatsPeriod(direction) {
-    const { start } = getPeriodBounds(statsPeriod.mode, statsPeriod.anchor);
-    let next = new Date(start);
-
-    if (statsPeriod.mode === 'day') next = addDays(next, direction);
-    else if (statsPeriod.mode === 'week') next = addDays(next, direction * 7);
-    else next = new Date(next.getFullYear(), next.getMonth() + direction, 1);
-
-    const currentStart = currentPeriodStart(statsPeriod.mode);
-    if (next.getTime() > currentStart.getTime()) next = currentStart;
-
-    statsPeriod.anchor = normalizePeriodAnchor(statsPeriod.mode, next);
-    selectedCategoryId = null;
-    updatePeriodControls();
-    renderDistribution();
+  function moveDailyDate(direction) {
+    const today = startOfDay(new Date());
+    let next = addDays(dailyDate, direction);
+    if (next.getTime() > today.getTime()) next = today;
+    dailyDate = next;
+    selectedDailyCategoryId = null;
+    updateDailyControls();
+    renderDailyPanel();
   }
 
-  function setStatsPeriodMode(mode) {
-    statsPeriod.mode = mode;
-    statsPeriod.anchor = normalizePeriodAnchor(mode, statsPeriod.anchor);
-    const currentStart = currentPeriodStart(mode);
-    if (statsPeriod.anchor.getTime() > currentStart.getTime()) statsPeriod.anchor = currentStart;
-    selectedCategoryId = null;
-    updatePeriodControls();
-    renderDistribution();
+  function updateWeekControls() {
+    const today = startOfDay(new Date());
+    const currentWeekStart = startOfWeekMonday(today);
+    weekStart = startOfWeekMonday(weekStart);
+    if (weekStart.getTime() > currentWeekStart.getTime()) weekStart = currentWeekStart;
+
+    els.weekDateInput.value = dateKey(weekStart);
+    els.weekDateInput.max = dateKey(today);
+    els.weekNextBtn.disabled = weekStart.getTime() >= currentWeekStart.getTime();
+    els.weekTodayBtn.hidden = weekStart.getTime() >= currentWeekStart.getTime();
+  }
+
+  function moveWeek(direction) {
+    const today = startOfDay(new Date());
+    const currentWeekStart = startOfWeekMonday(today);
+    weekStart = startOfWeekMonday(addDays(weekStart, direction * 7));
+    if (weekStart.getTime() > currentWeekStart.getTime()) weekStart = currentWeekStart;
+    updateWeekControls();
+    renderWeek(buildDailySecondsMap());
   }
 
   function buildCategoryGroups(start, end) {
@@ -1823,27 +1768,6 @@
       if (!group) {
         group = { ...category, seconds: 0, count: 0 };
         map.set(category.key, group);
-      }
-      group.seconds += seconds;
-      group.count += 1;
-    }
-
-    return [...map.values()].sort((a, b) => b.seconds - a.seconds);
-  }
-
-  function buildDetailGroups(start, end, categoryKey) {
-    const map = new Map();
-
-    for (const session of state.sessions) {
-      if (categoryDisplayForSession(session).key !== categoryKey) continue;
-      const seconds = secondsInRange(session, start.getTime(), end.getTime());
-      if (seconds <= 0.5) continue;
-
-      const label = session.detail.trim() || '未填写具体内容';
-      let group = map.get(label);
-      if (!group) {
-        group = { key: `detail-${map.size}`, name: label, seconds: 0, count: 0 };
-        map.set(label, group);
       }
       group.seconds += seconds;
       group.count += 1;
@@ -1876,94 +1800,112 @@
     return `${svg}<div class="donut-center"><strong>${centerValue}</strong><span>分钟</span></div>`;
   }
 
-  function categoryRowsMarkup(groups, totalSeconds, detailMode) {
+  function categoryRowsMarkup(groups, totalSeconds) {
     return groups.map((group) => {
       const percentage = totalSeconds > 0 ? Math.round((group.seconds / totalSeconds) * 100) : 0;
-      const copy = `<span class="category-copy"><strong>${escapeHTML(group.name)}</strong><span>${group.count} 次</span></span>`;
-      const value = `<span class="category-value"><strong>${formatDurationCN(group.seconds)}</strong><span>${percentage}%</span></span>`;
-
-      if (detailMode) {
-        return `<div class="category-row is-static">
-          <span class="category-dot" style="background:${group.color}"></span>
-          ${copy}
-          ${value}
-        </div>`;
-      }
-
       return `<button class="category-row" type="button" data-category-key="${escapeHTML(group.key)}">
         <span class="category-dot" style="background:${group.color}"></span>
-        ${copy}
-        ${value}
+        <span class="category-copy"><strong>${escapeHTML(group.name)}</strong><span>${group.count} 次</span></span>
+        <span class="category-value"><strong>${formatDurationCN(group.seconds)}</strong><span>${percentage}%</span></span>
         <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg>
       </button>`;
     }).join('');
   }
 
-  function renderDistribution() {
-    updatePeriodControls();
+  function dailySessionRowsMarkup(start, end, categoryKey) {
+    const startMs = start.getTime();
+    const endMs = end.getTime();
+    const category = categoryDisplayForSession({ categoryId: categoryKey === UNCATEGORIZED_KEY ? null : categoryKey });
 
-    const { start, end } = getPeriodBounds(statsPeriod.mode, statsPeriod.anchor);
+    const entries = state.sessions
+      .filter((session) => categoryDisplayForSession(session).key === categoryKey)
+      .map((session) => {
+        const seconds = secondsInRange(session, startMs, endMs);
+        return {
+          session,
+          seconds,
+          from: Math.max(session.startedAt, startMs),
+          to: Math.min(session.endedAt, endMs),
+        };
+      })
+      .filter((entry) => entry.seconds > 0.5 && entry.to > entry.from)
+      .sort((a, b) => a.session.startedAt - b.session.startedAt);
+
+    return entries.map((entry) => {
+      const session = entry.session;
+      const overtimeSeconds = Math.max(0, session.focusedSeconds - session.plannedSeconds);
+      const flags = [session.completed ? '完成' : '提前结束'];
+      if (overtimeSeconds >= 30) flags.push('含加时');
+      if (session.source === 'scheduled') flags.push('预约');
+      const detail = session.detail.trim() || '未填写具体内容';
+      const timeRange = `${formatHHMM(entry.from)}–${formatHHMM(entry.to)}`;
+
+      return `<button class="daily-record-row" type="button" data-session-id="${escapeHTML(session.id)}" aria-label="${escapeHTML(timeRange)}，${escapeHTML(detail)}，${formatDurationCN(entry.seconds)}">
+        <span class="category-dot" style="background:${category.color}"></span>
+        <span class="daily-record-main">
+          <span class="daily-record-top"><strong>${timeRange}</strong><span>${formatDurationCN(entry.seconds)}</span></span>
+          <span class="daily-record-bottom">${escapeHTML(detail)} · ${flags.join(' · ')}</span>
+        </span>
+        <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg>
+      </button>`;
+    }).join('');
+  }
+
+  function renderDailyPanel() {
+    updateDailyControls();
+
+    const start = startOfDay(dailyDate);
+    const end = addDays(start, 1);
     const groups = buildCategoryGroups(start, end);
     const totalSeconds = groups.reduce((sum, group) => sum + group.seconds, 0);
     const totalCount = groups.reduce((sum, group) => sum + group.count, 0);
-
-    let selectedGroup = selectedCategoryId
-      ? groups.find((group) => group.key === selectedCategoryId)
+    const selectedGroup = selectedDailyCategoryId
+      ? groups.find((group) => group.key === selectedDailyCategoryId) || null
       : null;
-    if (selectedCategoryId && !selectedGroup) selectedCategoryId = null;
 
-    let details = null;
-    let viewTotal = totalSeconds;
-    let viewCount = totalCount;
+    if (selectedDailyCategoryId && !selectedGroup) selectedDailyCategoryId = null;
 
-    if (selectedGroup) {
-      details = buildDetailGroups(start, end, selectedGroup.key);
-      viewTotal = details.reduce((sum, group) => sum + group.seconds, 0);
-      viewCount = details.reduce((sum, group) => sum + group.count, 0);
-    }
+    const viewSeconds = selectedGroup ? selectedGroup.seconds : totalSeconds;
+    const viewCount = selectedGroup ? selectedGroup.count : totalCount;
 
-    const segments = details
-      ? details.map((group, index) => ({
-        ...group,
-        color: shadeColor(selectedGroup.color, DETAIL_SHADES[index % DETAIL_SHADES.length]),
-      }))
-      : groups;
-
-    els.distributionChart.innerHTML = donutMarkup(segments, viewTotal, !details);
+    els.distributionChart.innerHTML = donutMarkup(groups, totalSeconds, true);
     els.distributionChart.setAttribute(
       'aria-label',
-      viewTotal > 0
-        ? `${details ? selectedGroup.name : '专注分类'}分布，共 ${formatDurationCN(viewTotal)}。`
-        : '这个区间暂无专注记录。'
+      totalSeconds > 0
+        ? `每日专注分类，共 ${formatDurationCN(totalSeconds)}。`
+        : '今天暂无专注记录。'
     );
 
-    els.distributionBackBtn.hidden = !details;
-    els.distributionListTitle.textContent = details ? selectedGroup.name : '全部分类';
-    els.distributionRange.textContent = details ? `具体内容 · ${formatPeriodRange()}` : formatPeriodRange();
-    els.distributionTotal.textContent = formatDurationCN(viewTotal);
-    els.distributionSummary.textContent = viewCount
-      ? `共 ${viewCount} 次专注 · 平均 ${Math.max(1, Math.round(viewTotal / 60 / viewCount))} 分钟`
+    els.distributionSummary.textContent = totalCount
+      ? `共 ${totalCount} 次专注 · 平均 ${Math.max(1, Math.round(totalSeconds / 60 / totalCount))} 分钟`
       : '共 0 次专注';
 
-    if (viewTotal <= 0) {
-      els.categoryList.innerHTML = '';
-      els.categoryList.setAttribute('aria-label', '暂无专注分类数据');
-      els.distributionEmpty.hidden = false;
-      els.distributionEmpty.textContent = details
-        ? `「${selectedGroup.name}」在这个区间还没有记录。`
-        : '这个区间还没有专注记录。';
+    els.distributionBackBtn.hidden = !selectedGroup;
+    els.distributionListTitle.textContent = selectedGroup ? selectedGroup.name : '全部分类';
+    els.distributionRange.textContent = selectedGroup
+      ? `按时间顺序 · ${viewCount} 次`
+      : formatDayRange(start);
+    els.distributionTotal.textContent = formatDurationCN(viewSeconds);
+
+    if (!selectedGroup && totalSeconds > 0) {
+      els.categoryList.innerHTML = categoryRowsMarkup(groups, totalSeconds);
+      els.categoryList.setAttribute('aria-label', '每日专注分类列表');
+    } else if (selectedGroup) {
+      els.categoryList.innerHTML = dailySessionRowsMarkup(start, end, selectedGroup.key);
+      els.categoryList.setAttribute('aria-label', `${selectedGroup.name}的专注记录`);
     } else {
-      els.distributionEmpty.hidden = true;
-      els.categoryList.innerHTML = details
-        ? categoryRowsMarkup(details, viewTotal, true)
-        : categoryRowsMarkup(groups, viewTotal, false);
-      els.categoryList.setAttribute('aria-label', details ? `${selectedGroup.name}的具体内容` : '专注分类列表');
+      els.categoryList.innerHTML = '';
+      els.categoryList.setAttribute('aria-label', '暂无专注记录');
     }
 
-    if (viewTotal > 0) {
-      if (details) {
-        const top = details[0];
-        els.distributionInsight.innerHTML = `共 <strong>${viewCount}</strong> 次 · 最常做 <strong>${escapeHTML(top.name)}</strong>`;
+    els.distributionEmpty.hidden = totalSeconds > 0;
+    if (totalSeconds <= 0) {
+      els.distributionEmpty.textContent = '这一天还没有专注记录。';
+    }
+
+    if (totalSeconds > 0) {
+      if (selectedGroup) {
+        els.distributionInsight.innerHTML = `共 <strong>${viewCount}</strong> 次 · 累计 <strong>${formatDurationCN(viewSeconds)}</strong>`;
       } else {
         const top = groups[0];
         els.distributionInsight.innerHTML = `共 <strong>${totalCount}</strong> 次专注 · 最投入 <strong>${escapeHTML(top.name)}</strong> ${formatDurationCN(top.seconds)}`;
@@ -1978,10 +1920,14 @@
 
   function renderWeek(daily) {
     const today = startOfDay(new Date());
-    const days = [];
+    const currentWeekStart = startOfWeekMonday(today);
+    weekStart = startOfWeekMonday(weekStart);
+    if (weekStart.getTime() > currentWeekStart.getTime()) weekStart = currentWeekStart;
+    updateWeekControls();
 
-    for (let offset = -6; offset <= 0; offset += 1) {
-      const date = addDays(today, offset);
+    const days = [];
+    for (let offset = 0; offset < 7; offset += 1) {
+      const date = addDays(weekStart, offset);
       days.push({
         date,
         seconds: daily.get(dateKey(date)) || 0,
@@ -1991,18 +1937,21 @@
     const maxSeconds = Math.max(25 * 60, ...days.map((day) => day.seconds));
     const totalSeconds = days.reduce((sum, day) => sum + day.seconds, 0);
 
-    els.weekChart.innerHTML = days.map((day, index) => {
-      const isToday = index === days.length - 1;
-      const isYesterday = index === days.length - 2;
+    els.weekChart.innerHTML = days.map((day) => {
+      const isToday = sameDay(day.date, today);
+      const isFuture = day.date.getTime() > today.getTime();
       const minutes = Math.round(day.seconds / 60);
       const height = day.seconds > 0
         ? Math.max(4, Math.min(100, (day.seconds / maxSeconds) * 100))
         : 0;
-      const label = isToday ? '今天' : isYesterday ? '昨天' : `周${WEEKDAYS_SHORT[day.date.getDay()]}`;
-      const title = `${day.date.getMonth() + 1}月${day.date.getDate()}日 · ${day.seconds > 0 ? `专注 ${formatDurationCN(day.seconds)}` : '没有专注'}`;
+      const label = isToday ? '今天' : `周${WEEKDAYS_SHORT[day.date.getDay()]}`;
+      const statusText = isFuture
+        ? '尚未到来'
+        : day.seconds > 0 ? `专注 ${formatDurationCN(day.seconds)}` : '没有专注';
+      const title = `${day.date.getMonth() + 1}月${day.date.getDate()}日 · ${statusText}`;
 
       return `
-        <button class="week-col is-clickable${isToday ? ' is-today' : ''}${day.seconds <= 0 ? ' is-zero' : ''}" type="button" data-week-date="${dateKey(day.date)}" title="${title}" aria-label="${title}，查看当天分类">
+        <button class="week-col${isFuture ? ' is-future' : ' is-clickable'}${isToday ? ' is-today' : ''}${day.seconds <= 0 ? ' is-zero' : ''}" type="button" data-week-date="${dateKey(day.date)}" title="${title}" aria-label="${title}，查看当天每日专注"${isFuture ? ' disabled' : ''}>
           <span class="week-value">${minutes}</span>
           <div class="week-bar-wrap">
             <div class="week-bar" style="height:${height.toFixed(1)}%"></div>
@@ -2012,9 +1961,9 @@
       `;
     }).join('');
 
-    els.weekSubtitle.textContent = totalSeconds > 0
-      ? `近 7 天共专注 ${formatDurationCN(totalSeconds)}`
-      : '从今天开始，留下第一格。';
+    const isCurrent = weekStart.getTime() === currentWeekStart.getTime();
+    const span = formatWeekSpan(weekStart, addDays(weekStart, 7));
+    els.weekSubtitle.textContent = `${isCurrent ? '本周 · ' : ''}${span}${totalSeconds > 0 ? ` · 共 ${formatDurationCN(totalSeconds)}` : ' · 暂无专注'}`;
   }
 
   function formatRecordDay(date) {
@@ -2032,62 +1981,6 @@
     const endTime = formatHHMM(end);
     if (sameDay(start, end)) return `${formatRecordDay(start)} ${startTime}–${endTime}`;
     return `${formatRecordDay(start)} ${startTime}–${end.getMonth() + 1}月${end.getDate()}日 ${endTime}`;
-  }
-
-  function renderRecords() {
-    const sorted = [...state.sessions].sort((a, b) => b.endedAt - a.endedAt);
-    els.recordsCount.textContent = `${sorted.length} 条`;
-
-    if (!sorted.length) {
-      els.recordsList.innerHTML = `
-        <div class="records-empty">
-          <span class="empty-mark"><svg class="icon" aria-hidden="true"><use href="#i-leaf"></use></svg></span>
-          <p>还没有专注记录，从第一个番茄开始吧。</p>
-          <button class="btn btn-secondary" type="button" data-go-focus>去专注</button>
-        </div>
-      `;
-      els.recordsMoreBtn.hidden = true;
-      return;
-    }
-
-    const visible = sorted.slice(0, recordsShown);
-    els.recordsList.innerHTML = visible.map((session) => {
-      const minutes = Math.max(1, Math.round(session.focusedSeconds / 60));
-      const overtimeSeconds = Math.max(0, session.focusedSeconds - session.plannedSeconds);
-      const category = categoryDisplayForSession(session);
-      const subParts = [session.completed ? '完整完成' : '提前结束'];
-      if (overtimeSeconds >= 30) subParts.push(`含加时 ${formatDurationCN(overtimeSeconds)}`);
-      if (session.source === 'scheduled') subParts.push('预约开始');
-
-      return `
-        <button class="record-row" type="button" data-session-id="${escapeHTML(session.id)}" aria-label="修改这条专注记录的分类">
-          <div class="record-main">
-            <span class="record-dot${session.completed ? ' is-complete' : ''}" aria-hidden="true"></span>
-            <div class="record-copy">
-              <strong>${formatRecordRange(session)}</strong>
-              <div class="record-subline">
-                <span>${escapeHTML(subParts.join(' · '))}</span>
-                <span class="record-category"><i style="background:${category.color}"></i>${escapeHTML(category.name)}</span>
-                ${session.detail ? `<span class="record-detail">${escapeHTML(session.detail)}</span>` : ''}
-              </div>
-            </div>
-          </div>
-          <div class="record-side">
-            <span class="record-duration">${minutes} 分钟</span>
-            <span class="record-badge${session.completed ? ' is-complete' : ''}">${session.completed ? '完成' : '提前'}</span>
-            <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg>
-          </div>
-        </button>
-      `;
-    }).join('');
-
-    const remaining = sorted.length - visible.length;
-    if (remaining > 0) {
-      els.recordsMoreBtn.hidden = false;
-      els.recordsMoreBtn.textContent = `显示更多（还有 ${remaining} 条）`;
-    } else {
-      els.recordsMoreBtn.hidden = true;
-    }
   }
 
   /* ---------- Heatmap tooltip ---------- */
@@ -2479,8 +2372,7 @@
     });
 
     if (view === 'stats') {
-      recordsShown = PAGE_SIZE;
-      selectedCategoryId = null;
+      selectedDailyCategoryId = null;
       renderStats();
     }
 
@@ -2584,7 +2476,7 @@
         okLabel: '清空记录',
         onOk: () => {
           state.sessions = [];
-          selectedCategoryId = null;
+          selectedDailyCategoryId = null;
           saveState();
           renderToday();
           renderStats();
@@ -2593,56 +2485,79 @@
       });
     });
 
-    els.periodModeButtons.forEach((button) => {
-      button.addEventListener('click', () => setStatsPeriodMode(button.dataset.mode));
-    });
-
-    els.periodPrevBtn.addEventListener('click', () => moveStatsPeriod(-1));
-    els.periodNextBtn.addEventListener('click', () => moveStatsPeriod(1));
+    els.periodPrevBtn.addEventListener('click', () => moveDailyDate(-1));
+    els.periodNextBtn.addEventListener('click', () => moveDailyDate(1));
     els.periodTodayBtn.addEventListener('click', () => {
-      statsPeriod.anchor = currentPeriodStart(statsPeriod.mode);
-      selectedCategoryId = null;
-      updatePeriodControls();
-      renderDistribution();
+      dailyDate = startOfDay(new Date());
+      selectedDailyCategoryId = null;
+      updateDailyControls();
+      renderDailyPanel();
     });
 
     els.periodDateInput.addEventListener('change', () => {
       const date = parseDateInputValue(els.periodDateInput.value);
       if (!date) {
-        updatePeriodControls();
+        updateDailyControls();
         return;
       }
-      let anchor = normalizePeriodAnchor(statsPeriod.mode, date);
-      const currentStart = currentPeriodStart(statsPeriod.mode);
-      if (anchor.getTime() > currentStart.getTime()) anchor = currentStart;
-      statsPeriod.anchor = anchor;
-      selectedCategoryId = null;
-      updatePeriodControls();
-      renderDistribution();
+      const today = startOfDay(new Date());
+      dailyDate = startOfDay(date);
+      if (dailyDate.getTime() > today.getTime()) dailyDate = today;
+      selectedDailyCategoryId = null;
+      updateDailyControls();
+      renderDailyPanel();
     });
 
     els.distributionBackBtn.addEventListener('click', () => {
-      selectedCategoryId = null;
-      renderDistribution();
+      selectedDailyCategoryId = null;
+      renderDailyPanel();
     });
 
     els.categoryList.addEventListener('click', (event) => {
-      const goFocus = event.target.closest('[data-go-focus]');
-      if (goFocus) {
-        switchView('focus');
+      const sessionRow = event.target.closest('[data-session-id]');
+      if (sessionRow) {
+        openSessionEditor(sessionRow.dataset.sessionId);
         return;
       }
       const row = event.target.closest('[data-category-key]');
       if (!row) return;
-      selectedCategoryId = row.dataset.categoryKey;
-      renderDistribution();
+      selectedDailyCategoryId = row.dataset.categoryKey;
+      renderDailyPanel();
     });
 
     els.distributionChart.addEventListener('click', (event) => {
       const segment = event.target.closest('[data-category-key]');
       if (!segment) return;
-      selectedCategoryId = segment.dataset.categoryKey;
-      renderDistribution();
+      selectedDailyCategoryId = segment.dataset.categoryKey;
+      renderDailyPanel();
+    });
+
+    els.weekPrevBtn.addEventListener('click', () => moveWeek(-1));
+    els.weekNextBtn.addEventListener('click', () => moveWeek(1));
+    els.weekTodayBtn.addEventListener('click', () => {
+      weekStart = startOfWeekMonday(new Date());
+      updateWeekControls();
+      renderWeek(buildDailySecondsMap());
+    });
+
+    els.weekDateInput.addEventListener('change', () => {
+      const date = parseDateInputValue(els.weekDateInput.value);
+      if (!date) {
+        updateWeekControls();
+        return;
+      }
+      const currentWeekStart = startOfWeekMonday(new Date());
+      weekStart = startOfWeekMonday(date);
+      if (weekStart.getTime() > currentWeekStart.getTime()) weekStart = currentWeekStart;
+      updateWeekControls();
+      renderWeek(buildDailySecondsMap());
+    });
+
+    els.weekChart.addEventListener('click', (event) => {
+      const column = event.target.closest('[data-week-date]');
+      if (!column || column.disabled) return;
+      const date = parseDateInputValue(column.dataset.weekDate);
+      if (date) selectDailyDate(date);
     });
 
     els.heatmapPrevBtn.addEventListener('click', () => {
@@ -2662,26 +2577,18 @@
       renderMonthHeatmap(buildDailySecondsMap());
     });
 
-    els.weekChart.addEventListener('click', (event) => {
-      const column = event.target.closest('[data-week-date]');
-      if (!column) return;
-      const date = parseDateInputValue(column.dataset.weekDate);
-      if (date) selectDayForStats(date);
-    });
-
-    els.recordsMoreBtn.addEventListener('click', () => {
-      recordsShown += PAGE_SIZE;
-      renderRecords();
-    });
-
-    els.recordsList.addEventListener('click', (event) => {
-      const goFocus = event.target.closest('[data-go-focus]');
-      if (goFocus) {
-        switchView('focus');
+    els.heatmapDateInput.addEventListener('change', () => {
+      const date = parseDateInputValue(els.heatmapDateInput.value);
+      if (!date) {
+        renderMonthHeatmap(buildDailySecondsMap());
         return;
       }
-      const row = event.target.closest('[data-session-id]');
-      if (row) openSessionEditor(row.dataset.sessionId);
+      const now = new Date();
+      const currentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      let selected = new Date(date.getFullYear(), date.getMonth(), 1);
+      if (selected.getTime() > currentMonth.getTime()) selected = currentMonth;
+      heatmapMonth = selected;
+      renderMonthHeatmap(buildDailySecondsMap());
     });
 
     els.sessionCategoryChips.addEventListener('click', (event) => {
