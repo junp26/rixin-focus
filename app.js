@@ -13,8 +13,30 @@
     breakMinutes: 5,
     sound: true,
     notify: false,
-    overtimeEnabled: false,
+    celebration: true,
   };
+
+  const FALLBACK_CELEBRATIONS = [
+    { id: 21, group: 'A', text: '握紧拳头，说「nice！」' },
+    { id: 7, group: 'C', text: '展露一个大大的微笑' },
+    { id: 43, group: 'D', text: '给自己击掌' },
+  ];
+
+  const FALLBACK_CELEBRATION_GROUP = {
+    name: '专注后庆祝',
+    icon: 'sparkles',
+    color: '#e7bd72',
+    cue: '就现在，真实地做一次。',
+  };
+
+  const QUOTE_FALLBACK = {
+    morning: ['今天会是美好的一天。'],
+    before: ['坐下就算赢。'],
+    during: ['一次只做一件事。'],
+    stuck: ['再试一次，就一次。'],
+  };
+
+  const QUOTES = buildQuoteLibrary(window.RRX_QUOTES);
 
   const IDLE_HEADLINE = '把注意力，放在一件事上。';
   const WEEKDAYS_SHORT = ['日', '一', '二', '三', '四', '五', '六'];
@@ -48,14 +70,24 @@
   let confirmAction = null;
   let scheduleDraft = null;
   let durationDraft = DEFAULT_SETTINGS.defaultFocus;
+  let startDialogMinutes = DEFAULT_SETTINGS.defaultFocus;
+  let startDialogContinue = false;
+  let lastCompletionContinueAfterCountdown = false;
   let deferredInstallPrompt = null;
   let audioCtx = null;
   let lastCompletionMinutes = DEFAULT_SETTINGS.defaultFocus;
   let lastSeenDay = dateKey(new Date());
   let lastTitle = '';
+  let idleQuote = '';
+  let sessionQuote = '';
+  let pauseQuote = '';
   let currentSessionId = null;
   let categoryEditingId = null;
   let categoryDraftColor = CATEGORY_COLORS[0];
+  let celebrationHistory = [];
+  let celebrationOnDone = null;
+  let celebrationPreview = false;
+  let celebrationCloseTimer = null;
 
   /* ---------- Tiny DOM helpers ---------- */
 
@@ -80,12 +112,29 @@
     customMinus: $id('customMinus'),
     customPlus: $id('customPlus'),
     durationError: $id('durationError'),
+    startDialog: $id('startDialog'),
+    startDurationLabel: $id('startDurationLabel'),
+    startOvertimePicker: qsa('#startOvertimePicker button'),
+    startOvertimeHint: $id('startOvertimeHint'),
+    startConfirmBtn: $id('startConfirmBtn'),
     clockDisplay: $id('clockDisplay'),
     clockCaption: $id('clockCaption'),
     progressRing: $id('progressRing'),
     idleActions: $id('idleActions'),
     runningActions: $id('runningActions'),
     idleNote: $id('idleNote'),
+    checkinCard: $id('checkinCard'),
+    checkinTitle: $id('checkinTitle'),
+    checkinHint: $id('checkinHint'),
+    checkinDone: $id('checkinDone'),
+    checkinBtn: $id('checkinBtn'),
+    checkinQuote: $id('checkinQuote'),
+    checkinQuoteText: $id('checkinQuoteText'),
+    checkinMeta: $id('checkinMeta'),
+    focusQuote: $id('focusQuote'),
+    focusQuoteText: $id('focusQuoteText'),
+    focusQuoteTag: $id('focusQuoteTag'),
+    focusQuoteNext: $id('focusQuoteNext'),
     startNowBtn: $id('startNowBtn'),
     scheduleBtn: $id('scheduleBtn'),
     pauseBtn: $id('pauseBtn'),
@@ -143,7 +192,6 @@
     settingsBtn: $id('settingsBtn'),
     settingsDialog: $id('settingsDialog'),
     breakButtons: qsa('#breakDurationPicker button'),
-    overtimeToggle: $id('overtimeToggle'),
     manageCategoriesBtn: $id('manageCategoriesBtn'),
     categorySummary: $id('categorySummary'),
     soundToggle: $id('soundToggle'),
@@ -153,6 +201,7 @@
     scheduleForm: $id('scheduleForm'),
     scheduleDayButtons: qsa('#scheduleDayPicker button'),
     scheduleDurationButtons: qsa('#scheduleDurationPicker button'),
+    scheduleOvertimePicker: qsa('#scheduleOvertimePicker button'),
     scheduleCustomMinutes: $id('scheduleCustomMinutes'),
     scheduleTime: $id('scheduleTime'),
     scheduleError: $id('scheduleError'),
@@ -184,6 +233,19 @@
     confirmMessage: $id('confirmMessage'),
     confirmOk: $id('confirmOk'),
     confirmCancel: $id('confirmCancel'),
+    celebrationDialog: $id('celebrationDialog'),
+    celebrationSky: $id('celebrationSky'),
+    celebrationKicker: $id('celebrationKicker'),
+    celebrationGroup: $id('celebrationGroup'),
+    celebrationText: $id('celebrationText'),
+    celebrationCue: $id('celebrationCue'),
+    celebrationMedallionUse: document.querySelector('#celebrationMedallion use'),
+    celebrationDoneBtn: $id('celebrationDoneBtn'),
+    celebrationAnotherBtn: $id('celebrationAnotherBtn'),
+    celebrationSkipBtn: $id('celebrationSkipBtn'),
+    celebrationToggle: $id('celebrationToggle'),
+    celebrationCount: $id('celebrationCount'),
+    celebrationPreviewBtn: $id('celebrationPreviewBtn'),
     toastHost: $id('toastHost'),
   };
 
@@ -199,8 +261,10 @@
     syncSettingsUI();
     syncDurationControl();
     updateGreeting();
-    renderTimer();
+    idleQuote = pickQuote('before');
     renderToday();
+    renderCheckin();
+    renderTimer();
     updateScheduleUI();
     markOverdueOnBoot();
     tick();
@@ -242,6 +306,7 @@
       categories: defaultCategories(),
       active: null,
       schedule: null,
+      checkins: {},
       settings: { ...DEFAULT_SETTINGS },
     };
   }
@@ -273,7 +338,7 @@
     settings.breakMinutes = BREAK_PRESETS.includes(Number(settings.breakMinutes)) ? Number(settings.breakMinutes) : 5;
     settings.sound = Boolean(settings.sound);
     settings.notify = Boolean(settings.notify);
-    settings.overtimeEnabled = Boolean(settings.overtimeEnabled);
+    settings.celebration = settings.celebration !== false;
 
     const sessions = Array.isArray(raw.sessions)
       ? raw.sessions.map(normalizeSession).filter(Boolean)
@@ -286,6 +351,7 @@
       categories,
       active: normalizeActive(raw.active),
       schedule: normalizeSchedule(raw.schedule),
+      checkins: normalizeCheckins(raw.checkins),
       settings,
     };
   }
@@ -346,6 +412,7 @@
       source: raw.source === 'scheduled' ? 'scheduled' : 'now',
       categoryId: typeof raw.categoryId === 'string' && raw.categoryId ? raw.categoryId : null,
       detail: typeof raw.detail === 'string' ? raw.detail.trim().slice(0, 80) : '',
+      continueAfterCountdown: Boolean(raw.continueAfterCountdown),
       spans,
     };
   }
@@ -387,6 +454,7 @@
       startedAt,
       status,
       overtime: Boolean(raw.overtime),
+      continueAfterCountdown: Boolean(raw.continueAfterCountdown),
       spans,
       currentSpanStart,
     };
@@ -401,9 +469,99 @@
       id: typeof raw.id === 'string' && raw.id ? raw.id : uid(),
       at,
       minutes: Math.min(180, Math.max(1, Math.round(minutes))),
+      continueAfterCountdown: Boolean(raw.continueAfterCountdown),
       createdAt: Number(raw.createdAt) || Date.now(),
       overdueNotified: Boolean(raw.overdueNotified),
     };
+  }
+
+  function normalizeCheckins(raw) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+
+    const result = {};
+    for (const [key, value] of Object.entries(raw)) {
+      const date = parseDateInputValue(key);
+      if (!date || dateKey(date) !== key) continue;
+      if (!value || typeof value !== 'object') continue;
+
+      const at = Number(value.at);
+      const text = String(value.text || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+      if (!Number.isFinite(at) || !text) continue;
+
+      result[key] = { at, text };
+    }
+
+    pruneCheckinMap(result);
+    return result;
+  }
+
+  function pruneCheckinMap(map) {
+    const keys = Object.keys(map).sort();
+    while (keys.length > 400) delete map[keys.shift()];
+  }
+
+  function pruneCheckins() {
+    pruneCheckinMap(state.checkins);
+  }
+
+  /* ---------- Quote library ---------- */
+
+  function buildQuoteLibrary(raw) {
+    const source = raw && typeof raw === 'object' ? raw : {};
+    const library = {};
+
+    for (const group of ['morning', 'before', 'during', 'stuck']) {
+      const seen = new Set();
+      const list = Array.isArray(source[group]) ? source[group] : [];
+
+      library[group] = list.reduce((quotes, item) => {
+        const text = String(item || '').replace(/\s+/g, ' ').trim();
+        if (text && !seen.has(text)) {
+          seen.add(text);
+          quotes.push(text);
+        }
+        return quotes;
+      }, []);
+
+      if (!library[group].length) library[group] = QUOTE_FALLBACK[group].slice();
+    }
+
+    return library;
+  }
+
+  function pickQuote(group, previous = '') {
+    const pool = QUOTES[group] || [];
+    if (!pool.length) return '';
+
+    const candidates = pool.length > 1 ? pool.filter((text) => text !== previous) : pool;
+    return candidates[Math.floor(Math.random() * candidates.length)] || pool[0];
+  }
+
+  function pickMorningQuote() {
+    const pool = QUOTES.morning;
+    if (!pool.length) return '';
+
+    const recentKeys = Object.keys(state.checkins).sort().slice(-pool.length);
+    const used = new Set(
+      recentKeys
+        .map((key) => state.checkins[key] && state.checkins[key].text)
+        .filter(Boolean)
+    );
+    const available = pool.filter((text) => !used.has(text));
+    const candidates = available.length ? available : pool;
+    return candidates[Math.floor(Math.random() * candidates.length)] || pool[0];
+  }
+
+  function checkinStreak() {
+    let cursor = startOfDay(new Date());
+    if (!state.checkins[dateKey(cursor)]) cursor = addDays(cursor, -1);
+
+    let streak = 0;
+    while (state.checkins[dateKey(cursor)] && streak < 3660) {
+      streak += 1;
+      cursor = addDays(cursor, -1);
+    }
+    return streak;
   }
 
   /* ---------- Dates & formatting ---------- */
@@ -577,6 +735,7 @@
       els.pauseBtnLabel.textContent = '暂停';
       setPauseIcon(false);
       updateTimerDisplay();
+      renderFocusQuote();
       return;
     }
 
@@ -605,6 +764,7 @@
     els.pauseBtnLabel.textContent = isPaused ? '继续' : '暂停';
     setPauseIcon(isPaused);
     updateTimerDisplay();
+    renderFocusQuote();
   }
 
   function setPauseIcon(isPaused) {
@@ -722,6 +882,103 @@
     return seconds;
   }
 
+  /* ---------- Morning check-in ---------- */
+
+  function renderCheckin() {
+    if (!els.checkinCard) return;
+
+    const now = new Date();
+    const entry = state.checkins[dateKey(now)];
+    const checked = Boolean(entry);
+    const streak = checkinStreak();
+
+    els.checkinCard.classList.toggle('is-checked', checked);
+    els.checkinTitle.textContent = now.getHours() < 11 ? '早安打卡' : '今日打卡';
+    els.checkinBtn.hidden = checked;
+    els.checkinDone.hidden = !checked;
+    els.checkinQuote.hidden = !checked;
+
+    if (checked) {
+      els.checkinHint.textContent = '今天已经打过卡了，明天再来抽一句。';
+      els.checkinQuoteText.textContent = entry.text;
+      els.checkinMeta.textContent = `${formatHHMM(entry.at)} 打卡 · ${
+        streak > 1 ? `连续打卡 ${streak} 天` : '连续打卡第 1 天'
+      }`;
+    } else {
+      els.checkinHint.textContent = streak > 0
+        ? `已经连续打卡 ${streak} 天，今天也来一句。`
+        : '每天一句，给自己一个开始。';
+      els.checkinQuoteText.textContent = '';
+      els.checkinMeta.textContent = '';
+    }
+  }
+
+  function checkIn() {
+    const key = dateKey(new Date());
+    if (state.checkins[key]) {
+      renderCheckin();
+      return;
+    }
+
+    const text = pickMorningQuote();
+    if (!text) {
+      toast('还没有可用的打卡句子。');
+      return;
+    }
+
+    state.checkins[key] = { at: Date.now(), text };
+    pruneCheckins();
+    saveState();
+    renderCheckin();
+    toast('今日已打卡，慢慢开始。');
+  }
+
+  /* ---------- Focus encouragement ---------- */
+
+  function renderFocusQuote() {
+    if (!els.focusQuote) return;
+
+    const active = state.active;
+    if (active && active.mode === 'break') {
+      els.focusQuote.hidden = true;
+      return;
+    }
+
+    let text;
+    let tag;
+    let canRefresh = false;
+
+    if (!active) {
+      if (!idleQuote) idleQuote = pickQuote('before');
+      text = idleQuote;
+      tag = '开始前';
+      canRefresh = true;
+    } else if (active.status === 'paused') {
+      if (!pauseQuote) pauseQuote = pickQuote('stuck', sessionQuote);
+      text = pauseQuote;
+      tag = '暂停时';
+    } else {
+      if (!sessionQuote) sessionQuote = pickQuote('during');
+      text = sessionQuote;
+      tag = active.overtime ? '正计时中' : '专注中';
+    }
+
+    if (!text) {
+      els.focusQuote.hidden = true;
+      return;
+    }
+
+    els.focusQuote.hidden = false;
+    els.focusQuoteText.textContent = `「${text}」`;
+    els.focusQuoteTag.textContent = tag;
+    els.focusQuoteNext.hidden = !canRefresh;
+  }
+
+  function refreshIdleQuote() {
+    idleQuote = pickQuote('before', idleQuote);
+    if (!state.active) renderFocusQuote();
+  }
+
   /* ---------- Duration dialog ---------- */
 
   function openDurationDialog() {
@@ -787,9 +1044,38 @@
     toast(`专注时长设为 ${minutes} 分钟。`);
   }
 
+  /* ---------- Start dialog ---------- */
+
+  function openStartDialog({ minutes = state.settings.defaultFocus, continueAfterCountdown = false } = {}) {
+    if (state.active) return;
+    startDialogMinutes = Math.min(180, Math.max(1, Math.round(Number(minutes) || state.settings.defaultFocus)));
+    startDialogContinue = Boolean(continueAfterCountdown);
+    els.startDurationLabel.textContent = `${startDialogMinutes} 分钟`;
+    syncStartOvertimeChoice();
+    openDialog(els.startDialog);
+  }
+
+  function syncStartOvertimeChoice() {
+    els.startOvertimePicker.forEach((button) => {
+      const selected = (button.dataset.value === 'true') === startDialogContinue;
+      button.classList.toggle('is-selected', selected);
+      button.setAttribute('aria-pressed', String(selected));
+    });
+    els.startOvertimeHint.textContent = startDialogContinue
+      ? '到点不会打断，自动转为正计时；加时也计入统计。'
+      : '到点响铃，记录完成后再选择分类。';
+  }
+
+  function confirmStartDialog() {
+    const minutes = startDialogMinutes;
+    const continueAfterCountdown = startDialogContinue;
+    closeDialog(els.startDialog);
+    startFocus(minutes, 'now', { continueAfterCountdown });
+  }
+
   /* ---------- Timer actions ---------- */
 
-  function startFocus(minutes, source = 'now') {
+  function startFocus(minutes, source = 'now', { continueAfterCountdown = false } = {}) {
     if (state.active) {
       toast('现在正在一段专注里，先把眼前这一轮完成吧。');
       return;
@@ -806,6 +1092,7 @@
       startedAt: now,
       status: 'running',
       overtime: false,
+      continueAfterCountdown: Boolean(continueAfterCountdown),
       spans: [],
       currentSpanStart: now,
     };
@@ -813,6 +1100,9 @@
     if (state.schedule && (source === 'scheduled' || now >= state.schedule.at)) {
       state.schedule = null;
     }
+
+    sessionQuote = pickQuote('during', sessionQuote);
+    pauseQuote = '';
 
     primeAudio();
     saveState();
@@ -838,6 +1128,9 @@
       currentSpanStart: now,
     };
 
+    sessionQuote = '';
+    pauseQuote = '';
+
     primeAudio();
     saveState();
     if (currentView !== 'focus') switchView('focus');
@@ -852,9 +1145,11 @@
     if (active.status === 'running') {
       closeCurrentSpan(active, Date.now());
       active.status = 'paused';
+      pauseQuote = active.mode === 'focus' ? pickQuote('stuck', pauseQuote) : '';
     } else {
       active.status = 'running';
       active.currentSpanStart = Date.now();
+      pauseQuote = '';
     }
 
     saveState();
@@ -867,6 +1162,8 @@
 
     if (active.mode === 'break') {
       state.active = null;
+      sessionQuote = '';
+      pauseQuote = '';
       saveState();
       renderTimer();
       updateScheduleUI();
@@ -877,6 +1174,8 @@
     const elapsed = getElapsedSeconds(active);
     if (elapsed < 60) {
       state.active = null;
+      sessionQuote = '';
+      pauseQuote = '';
       saveState();
       renderTimer();
       updateScheduleUI();
@@ -905,6 +1204,8 @@
       const now = Date.now();
       closeCurrentSpan(active, now);
       state.active = null;
+      sessionQuote = '';
+      pauseQuote = '';
       saveState();
       renderTimer();
       updateScheduleUI();
@@ -923,6 +1224,8 @@
 
     if (!completed && rawElapsed < 60) {
       state.active = null;
+      sessionQuote = '';
+      pauseQuote = '';
       saveState();
       renderTimer();
       updateScheduleUI();
@@ -956,12 +1259,16 @@
       source: active.source,
       categoryId: null,
       detail: '',
+      continueAfterCountdown: Boolean(active.continueAfterCountdown),
       spans,
     };
 
     state.sessions.push(session);
     state.active = null;
+    sessionQuote = '';
+    pauseQuote = '';
     lastCompletionMinutes = Math.round(plannedSeconds / 60);
+    lastCompletionContinueAfterCountdown = Boolean(active.continueAfterCountdown);
 
     if (state.schedule && now >= state.schedule.at) {
       state.schedule.overdueNotified = true;
@@ -979,7 +1286,7 @@
       sendNotification('专注完成', `这一轮 ${formatDurationCN(focusedSeconds)}，起来活动一下吧。`);
     }
 
-    showSessionDialog(session, { auto, edit: false });
+    celebrateAfterFocus(session, { auto, edit: false });
   }
 
   function showSessionDialog(session, { auto = false, edit = false } = {}) {
@@ -1086,6 +1393,196 @@
     const session = state.sessions.find((item) => item.id === sessionId);
     if (!session) return;
     showSessionDialog(session, { edit: true });
+  }
+
+  /* ---------- Post-focus celebration ---------- */
+
+  function celebrationList() {
+    const list = Array.isArray(window.RRX_CELEBRATIONS) ? window.RRX_CELEBRATIONS : [];
+    return list.filter((item) => item && typeof item.text === 'string' && item.text.trim());
+  }
+
+  function celebrationGroupMeta(key) {
+    const groups = window.RRX_CELEBRATION_GROUPS;
+    const meta = groups && typeof groups === 'object' ? groups[key] : null;
+    return meta && typeof meta === 'object'
+      ? { ...FALLBACK_CELEBRATION_GROUP, ...meta }
+      : FALLBACK_CELEBRATION_GROUP;
+  }
+
+  function pickCelebration() {
+    let pool = celebrationList();
+    if (!pool.length) pool = FALLBACK_CELEBRATIONS.slice();
+    if (!pool.length) return null;
+
+    const recent = new Set(celebrationHistory.map((id) => String(id)));
+    let candidates = pool.filter((item) => !recent.has(String(item.id)));
+    if (!candidates.length) {
+      celebrationHistory = [];
+      candidates = pool;
+    }
+
+    const item = candidates[Math.floor(Math.random() * candidates.length)];
+    celebrationHistory.push(item.id);
+    if (celebrationHistory.length > 12) celebrationHistory = celebrationHistory.slice(-12);
+    return item;
+  }
+
+  function celebrationSessionKicker(session) {
+    if (!session) return '专注结束';
+    const overtime = Math.max(0, session.focusedSeconds - session.plannedSeconds);
+    const overtimeCopy = overtime >= 30 ? ` · 加时 ${formatDurationCN(overtime)}` : '';
+    return `专注 ${formatDurationCN(session.focusedSeconds)}${overtimeCopy} · ${session.completed ? '完成' : '提前结束'}`;
+  }
+
+  function renderCelebration(item) {
+    if (!item || !els.celebrationDialog) return;
+    const group = celebrationGroupMeta(item.group);
+    els.celebrationDialog.dataset.group = String(item.group || '');
+    els.celebrationDialog.style.setProperty('--celebration-accent', group.color);
+    els.celebrationGroup.textContent = item.group ? `${item.group} · ${group.name}` : group.name;
+    els.celebrationText.textContent = item.text;
+    els.celebrationCue.textContent = group.cue;
+    if (els.celebrationMedallionUse) {
+      els.celebrationMedallionUse.setAttribute('href', `#i-${group.icon || 'sparkles'}`);
+    }
+  }
+
+  function openCelebration({ session = null, preview = false, onDone = null } = {}) {
+    if (!els.celebrationDialog) return false;
+    const item = pickCelebration();
+    if (!item) return false;
+
+    if (celebrationCloseTimer) {
+      window.clearTimeout(celebrationCloseTimer);
+      celebrationCloseTimer = null;
+    }
+
+    celebrationPreview = Boolean(preview);
+    celebrationOnDone = typeof onDone === 'function' ? onDone : null;
+
+    els.celebrationDialog.classList.remove('is-closing');
+    els.celebrationKicker.textContent = preview
+      ? `随机预览 · 共 ${celebrationList().length || FALLBACK_CELEBRATIONS.length} 种`
+      : celebrationSessionKicker(session);
+    els.celebrationDoneBtn.textContent = preview ? '知道了' : '我庆祝完了';
+    els.celebrationSkipBtn.hidden = preview;
+    renderCelebration(item);
+
+    if (!preview) closeAllDialogs(els.celebrationDialog);
+    openDialog(els.celebrationDialog);
+    document.body.classList.add('is-celebrating');
+    spawnCelebrationConfetti();
+
+    window.setTimeout(() => {
+      if (els.celebrationDialog.open) els.celebrationDoneBtn.focus();
+    }, 60);
+
+    return true;
+  }
+
+  function celebrateAfterFocus(session, options = {}) {
+    if (state.settings.celebration === false) {
+      showSessionDialog(session, options);
+      return;
+    }
+
+    const opened = openCelebration({
+      session,
+      onDone: () => showSessionDialog(session, options),
+    });
+    if (!opened) showSessionDialog(session, options);
+  }
+
+  function finishCelebration() {
+    const dialog = els.celebrationDialog;
+    if (!dialog || !dialog.open || dialog.classList.contains('is-closing')) return;
+
+    dialog.classList.add('is-closing');
+    const wait = prefersReducedMotion() ? 0 : 200;
+    celebrationCloseTimer = window.setTimeout(() => {
+      celebrationCloseTimer = null;
+      closeDialog(dialog);
+    }, wait);
+  }
+
+  function rerollCelebration() {
+    const dialog = els.celebrationDialog;
+    if (!dialog || !dialog.open || dialog.classList.contains('is-closing')) return;
+
+    const item = pickCelebration();
+    if (!item) return;
+
+    renderCelebration(item);
+    els.celebrationText.classList.remove('is-swapping');
+    void els.celebrationText.offsetWidth;
+    els.celebrationText.classList.add('is-swapping');
+    window.setTimeout(() => els.celebrationText.classList.remove('is-swapping'), 450);
+    spawnCelebrationConfetti();
+  }
+
+  function handleCelebrationClosed() {
+    if (!els.celebrationDialog) return;
+
+    if (celebrationCloseTimer) {
+      window.clearTimeout(celebrationCloseTimer);
+      celebrationCloseTimer = null;
+    }
+
+    els.celebrationDialog.classList.remove('is-closing');
+    document.body.classList.remove('is-celebrating');
+    if (els.celebrationSky) els.celebrationSky.textContent = '';
+
+    const done = celebrationOnDone;
+    celebrationOnDone = null;
+    celebrationPreview = false;
+    if (typeof done === 'function') done();
+  }
+
+  function prefersReducedMotion() {
+    return window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)').matches : false;
+  }
+
+  function spawnCelebrationConfetti() {
+    const sky = els.celebrationSky;
+    if (!sky) return;
+
+    sky.textContent = '';
+    if (prefersReducedMotion()) return;
+
+    const group = celebrationGroupMeta(els.celebrationDialog.dataset.group);
+    const palette = [group.color, '#f6dfa6', '#eab7a0', '#a9c9b1', '#fbf2dc', '#cf9a5d'];
+    const compact = window.innerWidth < 640;
+    const count = compact ? 22 : 36;
+    const fragment = document.createDocumentFragment();
+
+    for (let index = 0; index < count; index += 1) {
+      const piece = document.createElement('i');
+      piece.className = 'confetti';
+      piece.style.left = `${Math.random() * 100}%`;
+      piece.style.width = `${4 + Math.random() * 5}px`;
+      piece.style.height = `${6 + Math.random() * 7}px`;
+      piece.style.background = palette[index % palette.length];
+      piece.style.borderRadius = Math.random() > 0.72 ? '50%' : '2px';
+      piece.style.setProperty('--drift', `${(Math.random() * 2 - 1) * 140}px`);
+      piece.style.setProperty('--spin', `${Math.round((Math.random() * 2 - 1) * 900)}deg`);
+      piece.style.setProperty('--duration', `${5 + Math.random() * 4}s`);
+      piece.style.setProperty('--delay', `${-Math.random() * 9}s`);
+      fragment.appendChild(piece);
+    }
+
+    const sparks = compact ? 5 : 8;
+    for (let index = 0; index < sparks; index += 1) {
+      const spark = document.createElement('i');
+      spark.className = 'celebration-spark';
+      spark.style.left = `${8 + Math.random() * 84}%`;
+      spark.style.setProperty('--size', `${2 + Math.random() * 3}px`);
+      spark.style.setProperty('--duration', `${5 + Math.random() * 4}s`);
+      spark.style.setProperty('--delay', `${-Math.random() * 6}s`);
+      fragment.appendChild(spark);
+    }
+
+    sky.appendChild(fragment);
   }
 
   /* ---------- Category manager ---------- */
@@ -1257,6 +1754,7 @@
       day,
       time: formatHHMM(target),
       minutes: state.settings.defaultFocus,
+      continueAfterCountdown: false,
     };
   }
 
@@ -1280,6 +1778,11 @@
       els.scheduleCustomMinutes.value = String(scheduleDraft.minutes);
     }
     setSelected(els.scheduleDurationButtons, scheduleDraft.minutes);
+    els.scheduleOvertimePicker.forEach((button) => {
+      const selected = (button.dataset.value === 'true') === Boolean(scheduleDraft.continueAfterCountdown);
+      button.classList.toggle('is-selected', selected);
+      button.setAttribute('aria-pressed', String(selected));
+    });
   }
 
   function handleScheduleDayChange(day) {
@@ -1350,6 +1853,7 @@
       id: uid(),
       at: target.getTime(),
       minutes,
+      continueAfterCountdown: Boolean(scheduleDraft.continueAfterCountdown),
       createdAt: Date.now(),
       overdueNotified: false,
     };
@@ -1382,11 +1886,11 @@
       els.scheduleTitle.textContent = '预约时间已到';
       els.scheduleMeta.textContent = state.active
         ? '先完成当前这一轮，再开始也可以'
-        : `${formatScheduleWhen(schedule.at)} · ${schedule.minutes} 分钟，现在开始吗？`;
+        : `${formatScheduleWhen(schedule.at)} · ${schedule.minutes} 分钟${schedule.continueAfterCountdown ? ' · 正计时' : ''}，现在开始吗？`;
       els.scheduleStartBtn.hidden = Boolean(state.active);
     } else {
       els.scheduleTitle.textContent = `已预约 ${formatScheduleWhen(schedule.at)}`;
-      els.scheduleMeta.textContent = `${formatCountdown(schedule.at - now)} · ${schedule.minutes} 分钟专注`;
+      els.scheduleMeta.textContent = `${formatCountdown(schedule.at - now)} · ${schedule.minutes} 分钟专注${schedule.continueAfterCountdown ? ' · 继续正计时' : ''}`;
       els.scheduleStartBtn.hidden = true;
     }
   }
@@ -1399,8 +1903,9 @@
       return;
     }
     const minutes = schedule.minutes;
+    const continueAfterCountdown = Boolean(schedule.continueAfterCountdown);
     state.schedule = null;
-    startFocus(minutes, 'scheduled');
+    startFocus(minutes, 'scheduled', { continueAfterCountdown });
     toast(`预约的 ${minutes} 分钟专注，开始了。`);
   }
 
@@ -1415,6 +1920,7 @@
   function checkScheduleAutoStart() {
     const schedule = state.schedule;
     if (!schedule || schedule.overdueNotified) return;
+    if (els.celebrationDialog && els.celebrationDialog.open) return;
 
     const now = Date.now();
     if (now < schedule.at) return;
@@ -1453,8 +1959,9 @@
     }
 
     const minutes = schedule.minutes;
+    const continueAfterCountdown = Boolean(schedule.continueAfterCountdown);
     state.schedule = null;
-    startFocus(minutes, 'scheduled');
+    startFocus(minutes, 'scheduled', { continueAfterCountdown });
     toast('预约时间到，专注开始。');
     sendNotification('专注开始', '这是你提前约好的时间，慢慢进入。');
   }
@@ -2058,8 +2565,12 @@
 
   function syncSettingsUI() {
     setSelected(els.breakButtons, state.settings.breakMinutes);
-    els.overtimeToggle.checked = state.settings.overtimeEnabled;
     els.soundToggle.checked = state.settings.sound;
+    if (els.celebrationToggle) els.celebrationToggle.checked = state.settings.celebration !== false;
+    if (els.celebrationCount) {
+      const total = celebrationList().length || FALLBACK_CELEBRATIONS.length;
+      els.celebrationCount.textContent = `共 ${total} 种`;
+    }
     syncCategorySummary();
     syncNotificationUI();
     updateInstallUI();
@@ -2349,7 +2860,10 @@
     if (today === lastSeenDay) return;
     lastSeenDay = today;
     renderToday();
+    renderCheckin();
     updateGreeting();
+    idleQuote = pickQuote('before', idleQuote);
+    if (!state.active) renderFocusQuote();
     if (!els.statsView.hidden) renderStats();
   }
 
@@ -2394,7 +2908,7 @@
       if (state.active.status === 'running') {
         const elapsed = getElapsedSeconds(state.active, now);
         if (elapsed + 0.001 >= state.active.plannedSeconds && !state.active.overtime) {
-          if (state.active.mode === 'focus' && state.settings.overtimeEnabled) {
+          if (state.active.mode === 'focus' && state.active.continueAfterCountdown) {
             state.active.overtime = true;
             saveState();
             renderTimer();
@@ -2431,7 +2945,16 @@
     els.customMinutes.addEventListener('input', handleCustomDurationInput);
     els.durationForm.addEventListener('submit', submitDuration);
 
-    els.startNowBtn.addEventListener('click', () => startFocus(state.settings.defaultFocus, 'now'));
+    els.startNowBtn.addEventListener('click', () => openStartDialog());
+    els.startOvertimePicker.forEach((button) => {
+      button.addEventListener('click', () => {
+        startDialogContinue = button.dataset.value === 'true';
+        syncStartOvertimeChoice();
+      });
+    });
+    els.startConfirmBtn.addEventListener('click', confirmStartDialog);
+    if (els.checkinBtn) els.checkinBtn.addEventListener('click', checkIn);
+    if (els.focusQuoteNext) els.focusQuoteNext.addEventListener('click', refreshIdleQuote);
     els.scheduleBtn.addEventListener('click', openScheduleDialog);
     els.pauseBtn.addEventListener('click', togglePause);
     els.endBtn.addEventListener('click', requestEnd);
@@ -2451,11 +2974,6 @@
       });
     });
 
-    els.overtimeToggle.addEventListener('change', () => {
-      state.settings.overtimeEnabled = els.overtimeToggle.checked;
-      saveState();
-    });
-
     els.manageCategoriesBtn.addEventListener('click', openCategoryDialog);
 
     els.soundToggle.addEventListener('change', () => {
@@ -2465,6 +2983,28 @@
     });
 
     els.notifyToggle.addEventListener('change', handleNotifyToggle);
+
+    if (els.celebrationToggle) {
+      els.celebrationToggle.addEventListener('change', () => {
+        state.settings.celebration = els.celebrationToggle.checked;
+        saveState();
+      });
+    }
+
+    if (els.celebrationPreviewBtn) {
+      els.celebrationPreviewBtn.addEventListener('click', () => openCelebration({ preview: true }));
+    }
+
+    if (els.celebrationDialog) {
+      els.celebrationDoneBtn.addEventListener('click', finishCelebration);
+      els.celebrationAnotherBtn.addEventListener('click', rerollCelebration);
+      els.celebrationSkipBtn.addEventListener('click', finishCelebration);
+      els.celebrationDialog.addEventListener('cancel', (event) => {
+        event.preventDefault();
+        finishCelebration();
+      });
+      els.celebrationDialog.addEventListener('close', handleCelebrationClosed);
+    }
 
     els.exportBtn.addEventListener('click', exportCSV);
     els.exportBtnSettings.addEventListener('click', exportCSV);
@@ -2613,9 +3153,11 @@
     });
 
     els.againBtn.addEventListener('click', () => {
+      const minutes = lastCompletionMinutes || state.settings.defaultFocus;
+      const continueAfterCountdown = lastCompletionContinueAfterCountdown;
       commitSessionDialog();
       closeDialog(els.completeDialog);
-      startFocus(lastCompletionMinutes || state.settings.defaultFocus, 'now');
+      openStartDialog({ minutes, continueAfterCountdown });
     });
 
     els.completeClose.addEventListener('click', () => closeDialog(els.completeDialog));
@@ -2668,7 +3210,7 @@
       });
     });
 
-    [els.durationDialog, els.scheduleDialog, els.settingsDialog, els.confirmDialog, els.categoryDialog, els.completeDialog].forEach((dialog) => {
+    [els.durationDialog, els.startDialog, els.scheduleDialog, els.settingsDialog, els.confirmDialog, els.categoryDialog, els.completeDialog].forEach((dialog) => {
       dialog.addEventListener('click', (event) => {
         if (event.target === dialog) dialog.close();
       });
@@ -2694,6 +3236,13 @@
       if (Number.isFinite(value)) scheduleDraft.minutes = value;
       setSelected(els.scheduleDurationButtons, Number.isFinite(value) ? value : -1);
       els.scheduleError.hidden = true;
+    });
+
+    els.scheduleOvertimePicker.forEach((button) => {
+      button.addEventListener('click', () => {
+        scheduleDraft.continueAfterCountdown = button.dataset.value === 'true';
+        syncScheduleDraftUI();
+      });
     });
 
     els.scheduleTime.addEventListener('input', () => {

@@ -1,10 +1,12 @@
 'use strict';
 
-const CACHE_NAME = 'rrx-focus-shell-v6';
+const CACHE_NAME = 'rrx-focus-shell-v8';
 const APP_SHELL = [
   './',
   './index.html',
   './styles.css',
+  './quotes.js',
+  './celebrations.js',
   './app.js',
   './manifest.json',
   './icon.svg',
