@@ -88,6 +88,10 @@
   let celebrationOnDone = null;
   let celebrationPreview = false;
   let celebrationCloseTimer = null;
+  let celebrationReturnFocus = null;
+  let checkinRevealTimer = null;
+  let checkinRevealClosing = false;
+  let checkinRevealReturnFocus = null;
 
   /* ---------- Tiny DOM helpers ---------- */
 
@@ -126,11 +130,13 @@
     checkinCard: $id('checkinCard'),
     checkinTitle: $id('checkinTitle'),
     checkinHint: $id('checkinHint'),
-    checkinDone: $id('checkinDone'),
     checkinBtn: $id('checkinBtn'),
-    checkinQuote: $id('checkinQuote'),
-    checkinQuoteText: $id('checkinQuoteText'),
-    checkinMeta: $id('checkinMeta'),
+    checkinReveal: $id('checkinReveal'),
+    checkinRevealTitle: $id('checkinRevealTitle'),
+    checkinRevealText: $id('checkinRevealText'),
+    checkinRevealMeta: $id('checkinRevealMeta'),
+    checkinRevealClose: $id('checkinRevealClose'),
+    checkinRevealSparks: $id('checkinRevealSparks'),
     focusQuote: $id('focusQuote'),
     focusQuoteText: $id('focusQuoteText'),
     focusQuoteTag: $id('focusQuoteTag'),
@@ -564,6 +570,10 @@
     return streak;
   }
 
+  function hasCheckedInToday() {
+    return Boolean(state.checkins[dateKey(new Date())]);
+  }
+
   /* ---------- Dates & formatting ---------- */
 
   function startOfDay(value) {
@@ -727,6 +737,7 @@
     els.idleActions.hidden = isActive;
     els.runningActions.hidden = !isActive;
     els.idleNote.hidden = isActive;
+    if (els.checkinCard) els.checkinCard.hidden = isActive || hasCheckedInToday();
 
     if (!active) {
       els.timerModeLabel.textContent = '准备专注';
@@ -888,33 +899,23 @@
     if (!els.checkinCard) return;
 
     const now = new Date();
-    const entry = state.checkins[dateKey(now)];
-    const checked = Boolean(entry);
+    const checked = Boolean(state.checkins[dateKey(now)]);
+
+    els.checkinCard.hidden = checked || Boolean(state.active);
+    if (checked) return;
+
     const streak = checkinStreak();
-
-    els.checkinCard.classList.toggle('is-checked', checked);
-    els.checkinTitle.textContent = now.getHours() < 11 ? '早安打卡' : '今日打卡';
-    els.checkinBtn.hidden = checked;
-    els.checkinDone.hidden = !checked;
-    els.checkinQuote.hidden = !checked;
-
-    if (checked) {
-      els.checkinHint.textContent = '今天已经打过卡了，明天再来抽一句。';
-      els.checkinQuoteText.textContent = entry.text;
-      els.checkinMeta.textContent = `${formatHHMM(entry.at)} 打卡 · ${
-        streak > 1 ? `连续打卡 ${streak} 天` : '连续打卡第 1 天'
-      }`;
-    } else {
-      els.checkinHint.textContent = streak > 0
-        ? `已经连续打卡 ${streak} 天，今天也来一句。`
-        : '每天一句，给自己一个开始。';
-      els.checkinQuoteText.textContent = '';
-      els.checkinMeta.textContent = '';
-    }
+    const hour = now.getHours();
+    els.checkinTitle.textContent = hour >= 5 && hour < 11 ? '早安打卡' : '今日打卡';
+    els.checkinBtn.hidden = false;
+    els.checkinHint.textContent = streak > 0
+      ? `已经连续打卡 ${streak} 天，今天也来一句。`
+      : '每天一句，给自己一个开始。';
   }
 
   function checkIn() {
-    const key = dateKey(new Date());
+    const now = new Date();
+    const key = dateKey(now);
     if (state.checkins[key]) {
       renderCheckin();
       return;
@@ -930,13 +931,121 @@
     pruneCheckins();
     saveState();
     renderCheckin();
-    toast('今日已打卡，慢慢开始。');
+    showCheckinReveal({
+      text,
+      at: state.checkins[key].at,
+      streak: checkinStreak(),
+    });
+  }
+
+  function showCheckinReveal({ text, at, streak }) {
+    if (!els.checkinReveal) return;
+
+    if (checkinRevealTimer) {
+      window.clearTimeout(checkinRevealTimer);
+      checkinRevealTimer = null;
+    }
+
+    checkinRevealClosing = false;
+    checkinRevealReturnFocus = els.startNowBtn || document.activeElement;
+
+    const date = new Date(at);
+    const hour = new Date().getHours();
+    els.checkinRevealTitle.textContent = hour >= 5 && hour < 11 ? '早安，今天' : '今日打卡';
+    els.checkinRevealText.textContent = text;
+    els.checkinRevealMeta.textContent = `${date.getMonth() + 1}月${date.getDate()}日 · ${
+      streak > 1 ? `连续打卡 ${streak} 天` : '连续打卡第 1 天'
+    }`;
+
+    els.checkinReveal.hidden = false;
+    document.body.classList.add('is-checkin-reveal');
+    spawnCheckinSparks();
+    void els.checkinReveal.offsetWidth;
+    els.checkinReveal.classList.remove('is-leaving');
+    els.checkinReveal.classList.add('is-visible');
+
+    window.setTimeout(() => {
+      if (!checkinRevealClosing && !els.checkinReveal.hidden && els.checkinRevealClose) {
+        els.checkinRevealClose.focus();
+      }
+    }, 80);
+
+    checkinRevealTimer = window.setTimeout(() => {
+      hideCheckinReveal();
+    }, prefersReducedMotion() ? 4200 : 6200);
+  }
+
+  function hideCheckinReveal() {
+    if (!els.checkinReveal || els.checkinReveal.hidden || checkinRevealClosing) return;
+
+    checkinRevealClosing = true;
+    if (checkinRevealTimer) {
+      window.clearTimeout(checkinRevealTimer);
+      checkinRevealTimer = null;
+    }
+
+    els.checkinReveal.classList.remove('is-visible');
+    els.checkinReveal.classList.add('is-leaving');
+
+    window.setTimeout(() => {
+      els.checkinReveal.hidden = true;
+      els.checkinReveal.classList.remove('is-leaving');
+      if (els.checkinRevealSparks) els.checkinRevealSparks.textContent = '';
+      document.body.classList.remove('is-checkin-reveal');
+      checkinRevealClosing = false;
+
+      const target = checkinRevealReturnFocus;
+      checkinRevealReturnFocus = null;
+      if (
+        target &&
+        target.isConnected &&
+        target.getClientRects().length &&
+        typeof target.focus === 'function'
+      ) {
+        target.focus();
+      } else if (els.startNowBtn) {
+        els.startNowBtn.focus();
+      }
+    }, prefersReducedMotion() ? 0 : 320);
+  }
+
+  function spawnCheckinSparks() {
+    const host = els.checkinRevealSparks;
+    if (!host) return;
+
+    host.textContent = '';
+    if (prefersReducedMotion()) return;
+
+    const fragment = document.createDocumentFragment();
+    const count = window.innerWidth < 640 ? 10 : 16;
+
+    for (let index = 0; index < count; index += 1) {
+      const spark = document.createElement('i');
+      spark.className = 'checkin-spark';
+      spark.style.left = `${6 + Math.random() * 88}%`;
+      spark.style.top = `${22 + Math.random() * 58}%`;
+      spark.style.setProperty('--size', `${2 + Math.random() * 4}px`);
+      spark.style.setProperty('--drift', `${(Math.random() * 2 - 1) * 70}px`);
+      spark.style.setProperty('--delay', `${Math.random() * 0.9}s`);
+      spark.style.setProperty('--duration', `${3.2 + Math.random() * 2.6}s`);
+      fragment.appendChild(spark);
+    }
+
+    host.appendChild(fragment);
   }
 
   /* ---------- Focus encouragement ---------- */
 
   function renderFocusQuote() {
     if (!els.focusQuote) return;
+
+    if (
+      (els.celebrationDialog && els.celebrationDialog.open) ||
+      (els.completeDialog && els.completeDialog.open)
+    ) {
+      els.focusQuote.hidden = true;
+      return;
+    }
 
     const active = state.active;
     if (active && active.mode === 'break') {
@@ -1187,10 +1296,13 @@
     const overtimeNote = overtimeSeconds >= 30
       ? `（含加时 ${formatDurationCN(overtimeSeconds)}）`
       : '';
+    const afterCopy = state.settings.celebration === false
+      ? '结束后会记入统计，并让你选择专注分类。'
+      : '结束后会先庆祝一下，再记入统计，并让你选择专注分类。';
 
     openConfirm({
       title: active.overtime ? '结束这次正计时？' : '提前结束专注？',
-      message: `已经专注 ${formatDurationCN(elapsed)}${overtimeNote}。结束后会记入统计，并让你选择专注分类。`,
+      message: `已经专注 ${formatDurationCN(elapsed)}${overtimeNote}。${afterCopy}`,
       okLabel: '结束并记录',
       onOk: () => completeActive({ auto: false }),
     });
@@ -1333,6 +1445,7 @@
         toast('记录已保存，分类窗口打开失败。');
       }
     }
+    renderFocusQuote();
   }
 
   /* ---------- Session classification ---------- */
@@ -1415,15 +1528,16 @@
     if (!pool.length) pool = FALLBACK_CELEBRATIONS.slice();
     if (!pool.length) return null;
 
-    const recent = new Set(celebrationHistory.map((id) => String(id)));
-    let candidates = pool.filter((item) => !recent.has(String(item.id)));
+    const keyOf = (entry) => String(entry.id != null ? entry.id : entry.text);
+    const recent = new Set(celebrationHistory);
+    let candidates = pool.filter((item) => !recent.has(keyOf(item)));
     if (!candidates.length) {
       celebrationHistory = [];
       candidates = pool;
     }
 
     const item = candidates[Math.floor(Math.random() * candidates.length)];
-    celebrationHistory.push(item.id);
+    celebrationHistory.push(keyOf(item));
     if (celebrationHistory.length > 12) celebrationHistory = celebrationHistory.slice(-12);
     return item;
   }
@@ -1470,7 +1584,11 @@
     renderCelebration(item);
 
     if (!preview) closeAllDialogs(els.celebrationDialog);
+    if (!els.celebrationDialog.open) {
+      celebrationReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    }
     openDialog(els.celebrationDialog);
+    renderFocusQuote();
     document.body.classList.add('is-celebrating');
     spawnCelebrationConfetti();
 
@@ -1534,9 +1652,17 @@
     if (els.celebrationSky) els.celebrationSky.textContent = '';
 
     const done = celebrationOnDone;
+    const wasPreview = celebrationPreview;
+    const target = celebrationReturnFocus;
     celebrationOnDone = null;
     celebrationPreview = false;
-    if (typeof done === 'function') done();
+    celebrationReturnFocus = null;
+    if (typeof done === 'function') {
+      done();
+    } else if (wasPreview && target && target.isConnected && typeof target.focus === 'function') {
+      target.focus();
+    }
+    renderFocusQuote();
   }
 
   function prefersReducedMotion() {
@@ -1921,6 +2047,7 @@
     const schedule = state.schedule;
     if (!schedule || schedule.overdueNotified) return;
     if (els.celebrationDialog && els.celebrationDialog.open) return;
+    if (els.checkinReveal && !els.checkinReveal.hidden) return;
 
     const now = Date.now();
     if (now < schedule.at) return;
@@ -2954,6 +3081,12 @@
     });
     els.startConfirmBtn.addEventListener('click', confirmStartDialog);
     if (els.checkinBtn) els.checkinBtn.addEventListener('click', checkIn);
+    if (els.checkinRevealClose) els.checkinRevealClose.addEventListener('click', hideCheckinReveal);
+    if (els.checkinReveal) {
+      els.checkinReveal.addEventListener('click', (event) => {
+        if (event.target === els.checkinReveal) hideCheckinReveal();
+      });
+    }
     if (els.focusQuoteNext) els.focusQuoteNext.addEventListener('click', refreshIdleQuote);
     els.scheduleBtn.addEventListener('click', openScheduleDialog);
     els.pauseBtn.addEventListener('click', togglePause);
@@ -3161,7 +3294,10 @@
     });
 
     els.completeClose.addEventListener('click', () => closeDialog(els.completeDialog));
-    els.completeDialog.addEventListener('close', commitSessionDialog);
+    els.completeDialog.addEventListener('close', () => {
+      commitSessionDialog();
+      renderFocusQuote();
+    });
 
     els.categoryForm.addEventListener('submit', submitCategory);
 
@@ -3276,6 +3412,18 @@
     els.monthGrid.addEventListener('pointerup', hideHeatTooltip);
     window.addEventListener('scroll', hideHeatTooltip, { passive: true });
     window.addEventListener('resize', hideHeatTooltip);
+    document.addEventListener('keydown', (event) => {
+      if (!els.checkinReveal || els.checkinReveal.hidden) return;
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        hideCheckinReveal();
+        return;
+      }
+      if (event.key === 'Tab') {
+        event.preventDefault();
+        if (els.checkinRevealClose) els.checkinRevealClose.focus();
+      }
+    });
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden) tick();
     });

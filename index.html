@@ -140,7 +140,7 @@
           <h1 id="focusHeadline">把注意力，放在一件事上。</h1>
         </div>
 
-        <section class="checkin-card" id="checkinCard" aria-labelledby="checkinTitle">
+        <section class="checkin-card" id="checkinCard" aria-labelledby="checkinTitle" hidden>
           <div class="checkin-head">
             <span class="checkin-mark" aria-hidden="true">
               <svg class="icon"><use href="#i-sun"></use></svg>
@@ -149,15 +149,7 @@
               <p class="checkin-kicker" id="checkinTitle">早安打卡</p>
               <p class="checkin-hint" id="checkinHint">每天一句，给自己一个开始。</p>
             </div>
-            <span class="checkin-done" id="checkinDone" hidden>
-              <svg class="icon" aria-hidden="true"><use href="#i-check"></use></svg>
-              已打卡
-            </span>
             <button class="btn btn-checkin" id="checkinBtn" type="button">打卡</button>
-          </div>
-          <div class="checkin-quote" id="checkinQuote" hidden aria-live="polite">
-            <p class="checkin-quote-text" id="checkinQuoteText"></p>
-            <p class="checkin-meta" id="checkinMeta"></p>
           </div>
         </section>
 
@@ -433,6 +425,20 @@
     <span class="footer-quote">苟日新，日日新，又日新。</span>
   </footer>
 
+  <div class="checkin-reveal" id="checkinReveal" hidden role="dialog" aria-modal="true" aria-labelledby="checkinRevealTitle" aria-describedby="checkinRevealText">
+    <div class="checkin-reveal-glow" aria-hidden="true"></div>
+    <div class="checkin-reveal-sparks" id="checkinRevealSparks" aria-hidden="true"></div>
+    <div class="checkin-reveal-stage">
+      <span class="checkin-reveal-mark" aria-hidden="true">
+        <svg class="icon"><use href="#i-sun"></use></svg>
+      </span>
+      <p class="checkin-reveal-kicker" id="checkinRevealTitle">今日打卡</p>
+      <p class="checkin-reveal-text" id="checkinRevealText"></p>
+      <p class="checkin-reveal-meta" id="checkinRevealMeta"></p>
+      <button class="btn btn-checkin-reveal" id="checkinRevealClose" type="button">开始今天</button>
+    </div>
+  </div>
+
   <dialog class="dialog dialog-duration" id="durationDialog" aria-labelledby="durationDialogTitle">
     <form id="durationForm" novalidate>
       <div class="dialog-head">
@@ -706,7 +712,7 @@
     <button class="dialog-dismiss" id="completeClose" type="button">保存并关闭</button>
   </dialog>
 
-  <dialog class="celebration-dialog" id="celebrationDialog" aria-labelledby="celebrationText">
+  <dialog class="celebration-dialog" id="celebrationDialog" aria-labelledby="celebrationText" aria-describedby="celebrationGroup celebrationCue">
     <div class="celebration-glow" aria-hidden="true"></div>
     <div class="celebration-sky" id="celebrationSky" aria-hidden="true"></div>
     <div class="celebration-card">
